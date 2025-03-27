@@ -1,0 +1,38 @@
+# macOS system files
+.DS_Store
+
+# Node files
+node_modules/
+
+# Build directories
+build/
+dist/
+.next/
+.pnpm-store/
+
+# Postgres data directory
+pg-for-payloadcms-portfolio2025/pg-data-payloadcms/
+
+# Environment files
+.env
+**/.env.*
+!**/.env.example
+
+# Deployment-related
+.vercel
+
+# Media files and uploads
+media/
+public/media/
+
+# Generated files
+public/robots.txt
+public/sitemap*.xml
+
+# Logs
+*.log
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock

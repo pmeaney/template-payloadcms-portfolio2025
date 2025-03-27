@@ -1,0 +1,47 @@
+# This is for local dev (e.g. laptop) development
+services:
+  pg-dev-payloadcms:
+    image: postgres:17
+    container_name: pg-dev-payloadcms
+    env_file:
+      - ./pg-for-payloadcms-portfolio2025/.postgres-env.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg-for-payloadcms-portfolio2025/pg-data-payloadcms:/var/lib/postgresql/data
+      - ./pg-for-payloadcms-portfolio2025/init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - dockernet-payloadcms-dev
+
+# Since we scaffolded the payloadcms project files (`pnpx create-payload-app payloadcms-portfolio2025 -t website`),
+# and had an issue with its Dockerfile use of corepack, we'll skip usage of the Dockerfile for this dev environment.
+# This way we can keep the Dockerfile in its original form (since it worked fine w/o Docker compose), for use with prod enviornment (Where we deploy with Docker, not docker compose).
+  payloadcms-dev-portfolio2025:
+    image: node:18-alpine
+    container_name: payloadcms-dev-portfolio2025
+    working_dir: /app
+    volumes:
+      - ./payloadcms-portfolio2025:/app
+      - payloadcms_node_modules:/app/node_modules
+      - payloadcms_next_cache:/app/.next
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm dev"
+    env_file:
+      - ./payloadcms-portfolio2025/dev.env
+    ports:
+      - "3000:3000"
+    networks:
+      - dockernet-payloadcms-dev
+    depends_on:
+      - pg-dev-payloadcms
+
+volumes:
+  pg-data-payloadcms:
+    name: pg-data-payloadcms
+  payloadcms_node_modules:
+    name: payloadcms_node_modules
+  payloadcms_next_cache:
+    name: payloadcms_next_cache
+
+networks:
+  dockernet-payloadcms-dev:
+    name: dockernet-payloadcms-dev
