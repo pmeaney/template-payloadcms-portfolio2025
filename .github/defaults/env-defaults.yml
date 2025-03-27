@@ -1,0 +1,21 @@
+# .github/defaults/env-defaults.yml
+# All of these are default env vars
+# The images will be build with these env vars.
+#
+# The production containers will then be created from the images,
+# at which point production secrets will be injected into the container
+# to overwrite these defaults.
+# (the production secrets will be stored as github action environment secrets (e.g. environment named "production", with three items-- one per set. 
+#  and of course, ensure that those production secrets are brand new values for the relevant security-relevant items))
+---
+postgres_defaults: |
+  POSTGRES_DB=payloadcms-db
+  POSTGRES_USER=payloadcms-user
+  POSTGRES_PASSWORD=payloadcmsPass
+
+payloadcms_defaults: |
+  DATABASE_URI=postgres://payloadcms-user:payloadcmsPass@payloadcms-postgres-db-portfolio-prod:5432/payloadcms-db
+  PAYLOAD_SECRET=0505d1e544a564c8730e83fb
+  NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+  CRON_SECRET=YOUR_CRON_SECRET_HERE
+  PREVIEW_SECRET=YOUR_SECRET_HERE

@@ -11,7 +11,7 @@ dist/
 .pnpm-store/
 
 # Postgres data directory
-pg-for-payloadcms-portfolio2025/pg-data-payloadcms/
+**/pg-data-payloadcms/
 
 # Environment files
 .env

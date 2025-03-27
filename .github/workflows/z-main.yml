@@ -1,0 +1,196 @@
+# .github/workflows/main.yml
+name: Main Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+
+# Define project-specific variables here for easy modification
+env:
+  # GitHub and repository information
+  GITHUB_USERNAME: pmeaney                    # Replace with your GitHub username
+  REPO_NAME: payloadcms-portfolio             # Replace with your repository name
+  PROJECT_YEAR: "2025"                        # Year identifier for the project
+  
+  # Container naming convention
+  PROJECT_PREFIX: "payloadcms"                # Project identifier
+  
+  # Directory names (can be updated if needed for future projects)
+  DB_DIR: payloadcms-postgres-db-portfolio2025     # Directory for PostgreSQL files
+  CMS_DIR: payloadcms-cms-fe-portfolio2025           # Directory for PayloadCMS files
+
+permissions:
+  contents: read
+  actions: write  # Grant permissions for artifact operations
+
+jobs:
+  # Set calculated variables first
+  set-variables:
+    runs-on: ubuntu-latest
+    outputs:
+      image_name: ${{ steps.set-vars.outputs.image_name }}
+      db_container_name: ${{ steps.set-vars.outputs.db_container_name }}
+      cms_container_name: ${{ steps.set-vars.outputs.cms_container_name }}
+      network_name: ${{ steps.set-vars.outputs.network_name }}
+    steps:
+      - id: set-vars
+        run: |
+          echo "image_name=${{ env.PROJECT_PREFIX }}-cms-fe-portfolio-prod" >> $GITHUB_OUTPUT
+          echo "db_container_name=${{ env.PROJECT_PREFIX }}-postgres-db-portfolio-prod" >> $GITHUB_OUTPUT
+          echo "cms_container_name=${{ env.PROJECT_PREFIX }}-cms-fe-portfolio-prod" >> $GITHUB_OUTPUT
+          echo "network_name=${{ env.PROJECT_PREFIX }}-dockernet-prod" >> $GITHUB_OUTPUT
+
+  # First, check database status/initialize if needed
+  database:
+    needs: set-variables
+    uses: ./.github/workflows/a-db-init.yml
+    with:
+      environment: production
+      github_username: ${{ env.GITHUB_USERNAME }}
+      repo_name: ${{ env.REPO_NAME }}
+      project_year: ${{ env.PROJECT_YEAR }}
+      project_prefix: ${{ env.PROJECT_PREFIX }}
+      db_dir: ${{ env.DB_DIR }}
+      db_container_name: ${{ needs.set-variables.outputs.db_container_name }}
+      network_name: ${{ needs.set-variables.outputs.network_name }}
+    permissions:
+      contents: read
+    secrets:
+      LINUX_SSH_PRIVATE_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
+      LINUX_CICDGHA_USERNAME: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+      LINUX_SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+      POSTGRES__SECRET_ENV_FILE: ${{ secrets.POSTGRES__SECRET_ENV_FILE }}
+
+  # Deploy PayloadCMS (which includes frontend) - depends on DB being ready
+  cms:
+    needs: [set-variables, database]
+    uses: ./.github/workflows/b-cms-check-deploy.yml
+    with:
+      environment: production
+      github_username: ${{ env.GITHUB_USERNAME }}
+      repo_name: ${{ env.REPO_NAME }}
+      project_year: ${{ env.PROJECT_YEAR }}
+      project_prefix: ${{ env.PROJECT_PREFIX }}
+      cms_dir: ${{ env.CMS_DIR }}
+      image_name: ${{ needs.set-variables.outputs.image_name }}
+      cms_container_name: ${{ needs.set-variables.outputs.cms_container_name }}
+      db_container_name: ${{ needs.set-variables.outputs.db_container_name }}
+      network_name: ${{ needs.set-variables.outputs.network_name }}
+    permissions:
+      contents: read
+      actions: write  # Explicitly grant artifact permissions
+    secrets:
+      LINUX_SSH_PRIVATE_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
+      LINUX_CICDGHA_USERNAME: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+      LINUX_SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+      GHPAT__CICDUSER__REPO_WORKFLOW_WRDPACKAGES: ${{ secrets.GHPAT__032725_REPO_WORKFLOW_WRDPACKAGES }}
+      PAYLOAD__SECRET_ENV_FILE: ${{ secrets.PAYLOAD__SECRET_ENV_FILE }}
+
+  # Create a comprehensive deployment summary
+  deployment-summary:
+    needs: [set-variables, database, cms]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read  # Only needs read permissions for artifacts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for commit information
+
+      # Download deployment marker to include in the summary
+      - name: Download CMS deployment marker
+        id: download-cms-marker
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: cms-last-deployed-commit
+          path: ./deployment-markers/cms
+      
+      - name: Create Enhanced Deployment Summary
+        run: |
+          # Collect information about the current and last deployed commits
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          CURRENT_COMMIT_SHORT=$(git rev-parse --short HEAD)
+          CURRENT_COMMIT_DATE=$(git show -s --format=%ci $CURRENT_COMMIT)
+          CURRENT_COMMIT_MESSAGE=$(git show -s --format=%s $CURRENT_COMMIT)
+          
+          # Get CMS last deployed commit info if available
+          if [ -f "./deployment-markers/cms/last-cms-commit.txt" ]; then
+            CMS_LAST_COMMIT=$(cat ./deployment-markers/cms/last-cms-commit.txt)
+            CMS_LAST_COMMIT_SHORT=$(git rev-parse --short $CMS_LAST_COMMIT)
+            CMS_LAST_COMMIT_DATE=$(git show -s --format=%ci $CMS_LAST_COMMIT)
+            CMS_CHANGES_COUNT=$(git diff --name-only $CMS_LAST_COMMIT $CURRENT_COMMIT -- ./${{ env.CMS_DIR }} | wc -l)
+            CMS_DEPLOYED_NOW="${{ needs.cms.outputs.had_changes }}"
+          else
+            CMS_LAST_COMMIT="No previous deployment"
+            CMS_LAST_COMMIT_SHORT="N/A"
+            CMS_LAST_COMMIT_DATE="N/A"
+            CMS_CHANGES_COUNT="N/A (first deployment)"
+            CMS_DEPLOYED_NOW="${{ needs.cms.outputs.had_changes }}"
+          fi
+
+          # Create the deployment summary
+          echo "# 📊 Deployment Summary for Commit ${CURRENT_COMMIT_SHORT}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔄 Current Workflow Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| ------ | ----- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${CURRENT_COMMIT_SHORT}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Date** | ${CURRENT_COMMIT_DATE} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Message** | ${CURRENT_COMMIT_MESSAGE} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Project Prefix** | ${{ env.PROJECT_PREFIX }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Database section
+          echo "## 💾 Database" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| ------ | ----- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Container Name** | ${{ needs.set-variables.outputs.db_container_name }} |" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.database.outputs.needs_depl__db }}" == "true" ]]; then
+            echo "| **Action Taken** | ✅ Database container was newly created |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Action Taken** | ℹ️ Database container already existed, no action needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # CMS deployment section with enhanced tracking
+          echo "## 🖥️ CMS (PayloadCMS)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| ------ | ----- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Container Name** | ${{ needs.set-variables.outputs.cms_container_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Name** | ghcr.io/${{ env.GITHUB_USERNAME }}/${{ needs.set-variables.outputs.image_name }}:latest |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Last deployed commit** | \`${CMS_LAST_COMMIT_SHORT}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Last deployment date** | ${CMS_LAST_COMMIT_DATE} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Changes detected** | ${CMS_DEPLOYED_NOW} |" >> $GITHUB_STEP_SUMMARY
+          
+          # Use fallback count if the output count is missing
+          if [[ "${{ needs.cms.outputs.had_changes }}" == "true" && -n "${{ needs.cms.outputs.changed_files_count }}" ]]; then
+            echo "| **Number of changes** | ${{ needs.cms.outputs.changed_files_count }} files |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Number of changes** | ${CMS_CHANGES_COUNT} files |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "| **Action taken** | ${{ needs.cms.outputs.action }} |" >> $GITHUB_STEP_SUMMARY
+          
+          # If changes were detected, show what changed using the output from CMS workflow
+          if [[ "${{ needs.cms.outputs.had_changes }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📝 CMS Changes" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            if [[ -n "${{ needs.cms.outputs.changed_files }}" ]]; then
+              echo "${{ needs.cms.outputs.changed_files }}" >> $GITHUB_STEP_SUMMARY
+            else
+              # Fallback method if output is not available
+              if [ -f "./deployment-markers/cms/last-cms-commit.txt" ]; then
+                git diff --name-only $CMS_LAST_COMMIT $CURRENT_COMMIT -- ./${{ env.CMS_DIR }} >> $GITHUB_STEP_SUMMARY
+              else
+                echo "First deployment - all files are new" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi

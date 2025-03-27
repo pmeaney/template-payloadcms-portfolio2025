@@ -1,0 +1,198 @@
+name: Database Check and Init Simulation
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "The deployment environment to use"
+      github_username:
+        required: true
+        type: string
+        description: "GitHub username for Docker image naming"
+      repo_name:
+        required: true
+        type: string
+        description: "Repository name for Docker image naming"
+      project_year:
+        required: true
+        type: string
+        description: "Project year identifier"
+      project_prefix:
+        required: true
+        type: string
+        description: "Project prefix for container naming"
+      image_name:
+        required: false
+        type: string
+        description: "Optional image name (if needed for DB)"
+      db_dir:
+        required: true
+        type: string
+        description: "Directory name for database files"
+      db_container_name:
+        required: true
+        type: string
+        description: "Name of the database container"
+      network_name:
+        required: true
+        type: string
+        description: "Docker network name"
+    secrets:
+      LINUX_SSH_PRIVATE_KEY:
+        required: true
+      LINUX_CICDGHA_USERNAME:
+        required: true
+      LINUX_SERVER_IP:
+        required: true
+      POSTGRES__SECRET_ENV_FILE:
+        required: true
+    outputs:
+      needs_depl__db:
+        description: "Whether DB needs deployment"
+        value: ${{ jobs.check-db.outputs.needs_depl__db }}
+
+jobs:
+  check-db:
+    environment: production
+    runs-on: ubuntu-latest
+    outputs:
+      needs_depl__db: ${{ steps.check-depl-needed--db.outputs.needs_depl__db }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Check DB container status
+      - name: Check if Postgres Deployment needed
+        id: check-depl-needed--db
+        env:
+          SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
+          SSH_USER: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+          SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+          DEPLOY_POSTGRES_NEEDED: true
+          DB_CONTAINER_NAME: ${{ inputs.db_container_name }}
+        run: |
+          # Debug environment variables
+          echo "Debug - Checking if variables are set:"
+          echo "SSH_USER is set: $(if [ -n "$SSH_USER" ]; then echo "YES"; else echo "NO"; fi)"
+          echo "SERVER_IP is set: $(if [ -n "$SERVER_IP" ]; then echo "YES"; else echo "NO"; fi)"
+          echo "DB_CONTAINER_NAME is: $DB_CONTAINER_NAME"
+
+          # Setup SSH
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat >>~/.ssh/config <<END
+          Host prod
+            HostName $SERVER_IP
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking no
+          END
+
+          # Check if Postgres container exists
+          CONTAINER_EXISTS=$(ssh prod "docker ps -a --format '{{.Names}}' | grep -q '^$DB_CONTAINER_NAME$' && echo 'true' || echo 'false'")
+
+          if [ "$CONTAINER_EXISTS" = "false" ] && [ "${{ env.DEPLOY_POSTGRES_NEEDED }}" = "true" ]; then
+            echo "⚠️ No Postgres container found & desire to deploy it is ${{ env.DEPLOY_POSTGRES_NEEDED }}"
+            echo "needs_depl__db=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Postgres container exists. Will skip Postgres setup."
+            echo "needs_depl__db=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Note: Ideally we only create the DB container once-- so no need to publish.
+      # Therefore, we build it & run it right on the remote server (vs. build & publish from CICD Runner's server)
+      - name: Install YQ
+        run: |
+          wget https://github.com/mikefarah/yq/releases/download/v4.34.1/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      - name: Load Environment Defaults for PostgreSQL
+        id: postgres-env-defaults
+        env:
+          DB_DIR: ${{ inputs.db_dir }}
+        run: |
+          # Extract PostgreSQL environment variables from defaults file
+          POSTGRES_DEFAULTS=$(yq e '.postgres_defaults' .github/defaults/env-defaults.yml)
+          mkdir -p $DB_DIR
+          echo "$POSTGRES_DEFAULTS" > $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
+
+      - name: Build & Run DB Container on remote server
+        if: steps.check-depl-needed--db.outputs.needs_depl__db == 'true'
+        env:
+          SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
+          SSH_USER: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+          SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+          DEPLOY_POSTGRES_NEEDED: true
+          DB_DIR: ${{ inputs.db_dir }}
+          DB_CONTAINER_NAME: ${{ inputs.db_container_name }}
+          NETWORK_NAME: ${{ inputs.network_name }}
+        run: |
+          # Debug environment variables
+          echo "Debug - Checking if variables are set:"
+          echo "SSH_USER is set: $(if [ -n "$SSH_USER" ]; then echo "YES"; else echo "NO"; fi)"
+          echo "SERVER_IP is set: $(if [ -n "$SERVER_IP" ]; then echo "YES"; else echo "NO"; fi)"
+          echo "DB_CONTAINER_NAME is: $DB_CONTAINER_NAME"
+          echo "NETWORK_NAME is: $NETWORK_NAME"
+
+          # Setup SSH
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat >>~/.ssh/config <<END
+          Host prod
+            HostName $SERVER_IP
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking no
+          END
+
+          # Create directory on remote server for the env file
+          ssh prod "mkdir -p ~/$DB_DIR"
+                    
+          # Copy the environment file to the remote server
+          scp $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env prod:~/$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
+                    
+          # Ensure network exists
+          ssh prod "docker network create $NETWORK_NAME || true"
+          
+          # Run the container on the remote server
+          ssh prod "docker volume create ${{ inputs.project_prefix }}-postgres-data-prod && \
+          docker volume create ${{ inputs.project_prefix }}-postgres-init-scripts-prod && \
+          docker run -d \
+            --name $DB_CONTAINER_NAME \
+            --network $NETWORK_NAME \
+            --env-file ./$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env \
+            -p 5432:5432 \
+            -v ${{ inputs.project_prefix }}-postgres-data-prod:/var/lib/postgresql/data \
+            -v ${{ inputs.project_prefix }}-postgres-init-scripts-prod:/docker-entrypoint-initdb.d \
+            postgres:17"
+          
+          # Verify the container is running in a separate command
+          CONTAINER_STATUS=$(ssh prod "docker ps -f name=$DB_CONTAINER_NAME --format '{{.Status}}'")
+          if [ -n "$CONTAINER_STATUS" ]; then
+            echo "Database container successfully created and running"
+            echo "DB_CREATED=true" >> $GITHUB_ENV
+          else
+            echo "Failed to create database container"
+            exit 1
+          fi
+          
+          ## Clean up local file after transfer
+          rm $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
+          
+
+      # Final status output
+      - name: Status Report
+        run: |
+          if [[ "${{ steps.check-depl-needed--db.outputs.needs_depl__db }}" == "false" ]]; then
+            echo "Database container already existed"
+          elif [[ "$DB_CREATED" == "true" ]]; then
+            echo "Database container was created"
+          else
+            echo "Failed to verify database status"
+          fi
