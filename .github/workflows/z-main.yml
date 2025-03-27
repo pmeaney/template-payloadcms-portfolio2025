@@ -1,4 +1,4 @@
-# .github/workflows/main.yml
+# .github/workflows/z-main.yml
 name: Main Deployment Pipeline
 
 on:
@@ -7,9 +7,6 @@ on:
 
 # Define project-specific variables here for easy modification
 env:
-  # GitHub and repository information
-  GITHUB_USERNAME: pmeaney                    # Replace with your GitHub username
-  REPO_NAME: payloadcms-portfolio             # Replace with your repository name
   PROJECT_YEAR: "2025"                        # Year identifier for the project
   
   # Container naming convention
@@ -17,7 +14,7 @@ env:
   
   # Directory names (can be updated if needed for future projects)
   DB_DIR: payloadcms-postgres-db-portfolio2025     # Directory for PostgreSQL files
-  CMS_DIR: payloadcms-cms-fe-portfolio2025           # Directory for PayloadCMS files
+  CMS_DIR: payloadcms-cms-fe-portfolio2025         # Directory for PayloadCMS files
 
 permissions:
   contents: read
@@ -46,8 +43,8 @@ jobs:
     uses: ./.github/workflows/a-db-init.yml
     with:
       environment: production
-      github_username: ${{ env.GITHUB_USERNAME }}
-      repo_name: ${{ env.REPO_NAME }}
+      github_username: ${{ github.repository_owner }}
+      repo_name: ${{ github.event.repository.name }}
       project_year: ${{ env.PROJECT_YEAR }}
       project_prefix: ${{ env.PROJECT_PREFIX }}
       db_dir: ${{ env.DB_DIR }}
@@ -67,8 +64,8 @@ jobs:
     uses: ./.github/workflows/b-cms-check-deploy.yml
     with:
       environment: production
-      github_username: ${{ env.GITHUB_USERNAME }}
-      repo_name: ${{ env.REPO_NAME }}
+      github_username: ${{ github.repository_owner }}
+      repo_name: ${{ github.event.repository.name }}
       project_year: ${{ env.PROJECT_YEAR }}
       project_prefix: ${{ env.PROJECT_PREFIX }}
       cms_dir: ${{ env.CMS_DIR }}
@@ -162,7 +159,7 @@ jobs:
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "| ------ | ----- |" >> $GITHUB_STEP_SUMMARY
           echo "| **Container Name** | ${{ needs.set-variables.outputs.cms_container_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Image Name** | ghcr.io/${{ env.GITHUB_USERNAME }}/${{ needs.set-variables.outputs.image_name }}:latest |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Name** | ghcr.io/${{ github.repository_owner }}/${{ needs.set-variables.outputs.image_name }}:latest |" >> $GITHUB_STEP_SUMMARY
           echo "| **Last deployed commit** | \`${CMS_LAST_COMMIT_SHORT}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Last deployment date** | ${CMS_LAST_COMMIT_DATE} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Changes detected** | ${CMS_DEPLOYED_NOW} |" >> $GITHUB_STEP_SUMMARY
