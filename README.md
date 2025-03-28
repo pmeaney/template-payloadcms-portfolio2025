@@ -1,3 +1,6 @@
+[![Build Status](https://github.com/pmeaney/template-payloadcms-portfolio2025/actions/workflows/z-main.yml/badge.svg)](https://github.com/pmeaney/template-payloadcms-portfolio2025/actions/workflows/z-main.yml)
+
+
 # Dockerized PayloadCMS + Postgres Portfolio Project Template
 
 A template for local development of a PayloadCMS website.
