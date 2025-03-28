@@ -1,4 +1,4 @@
-name: Database Check and Init
+name: Database Check and Init Simulation
 
 on:
   workflow_call:
@@ -7,42 +7,10 @@ on:
         required: true
         type: string
         description: "The deployment environment to use"
-      github_username:
-        required: true
-        type: string
-        description: "GitHub username for Docker image naming"
-      repo_name:
-        required: true
-        type: string
-        description: "Repository name for Docker image naming"
-      project_year:
-        required: true
-        type: string
-        description: "Project year identifier"
-      project_prefix:
-        required: true
-        type: string
-        description: "Project prefix for container naming"
-      image_name:
-        required: false
-        type: string
-        description: "Optional image name (if needed for DB)"
-      db_dir:
-        required: true
-        type: string
-        description: "Directory name for database files"
-      db_container_name:
-        required: true
-        type: string
-        description: "Name of the database container"
-      network_name:
-        required: true
-        type: string
-        description: "Docker network name"
     secrets:
       LINUX_SSH_PRIVATE_KEY:
         required: true
-      LINUX_CICDGHA_USERNAME:
+      LINUX_USER_DEVOPS:
         required: true
       LINUX_SERVER_IP:
         required: true
@@ -70,16 +38,14 @@ jobs:
         id: check-depl-needed--db
         env:
           SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
-          SSH_USER: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+          SSH_USER: ${{ secrets.LINUX_USER_DEVOPS }}
           SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
           DEPLOY_POSTGRES_NEEDED: true
-          DB_CONTAINER_NAME: ${{ inputs.db_container_name }}
         run: |
           # Debug environment variables
           echo "Debug - Checking if variables are set:"
           echo "SSH_USER is set: $(if [ -n "$SSH_USER" ]; then echo "YES"; else echo "NO"; fi)"
           echo "SERVER_IP is set: $(if [ -n "$SERVER_IP" ]; then echo "YES"; else echo "NO"; fi)"
-          echo "DB_CONTAINER_NAME is: $DB_CONTAINER_NAME"
 
           # Setup SSH
           mkdir -p ~/.ssh/
@@ -94,7 +60,7 @@ jobs:
           END
 
           # Check if Postgres container exists
-          CONTAINER_EXISTS=$(ssh prod "docker ps -a --format '{{.Names}}' | grep -q '^$DB_CONTAINER_NAME$' && echo 'true' || echo 'false'")
+          CONTAINER_EXISTS=$(ssh prod "docker ps -a --format '{{.Names}}' | grep -q '^payloadcms-postgres-db-portfolio-prod$' && echo 'true' || echo 'false'")
 
           if [ "$CONTAINER_EXISTS" = "false" ] && [ "${{ env.DEPLOY_POSTGRES_NEEDED }}" = "true" ]; then
             echo "⚠️ No Postgres container found & desire to deploy it is ${{ env.DEPLOY_POSTGRES_NEEDED }}"
@@ -105,44 +71,21 @@ jobs:
           fi
 
       # Note: Ideally we only create the DB container once-- so no need to publish.
-      # Therefore, we build it & run it right on the remote server (vs. build & publish from CICD Runner's server)
-      - name: Install YQ
-        run: |
-          wget https://github.com/mikefarah/yq/releases/download/v4.34.1/yq_linux_amd64 -O /usr/local/bin/yq
-          chmod +x /usr/local/bin/yq
-
-      - name: Load Environment Defaults for PostgreSQL
-        id: postgres-env-defaults
-        env:
-          DB_DIR: ${{ inputs.db_dir }}
-        run: |
-          # Extract PostgreSQL environment variables from defaults file
-          POSTGRES_DEFAULTS=$(yq e '.postgres_defaults' .github/defaults/env-defaults.yml)
-          mkdir -p $DB_DIR
-          echo "$POSTGRES_DEFAULTS" > $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
-
-          # Debug - Print the env file (excluding sensitive info)
-          grep -v -e PASSWORD -e SECRET $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env || true
-
-      - name: Build & Run DB Container on remote server
+      # Also, no need to build the image-- we're using the standard postgres image.
+      # Therefore, we simply need to deloy the standard postgres image, as a container, and inject our prod env vars into it
+      - name: Deploy DB Container on remote server
         if: steps.check-depl-needed--db.outputs.needs_depl__db == 'true'
         env:
           SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
-          SSH_USER: ${{ secrets.LINUX_CICDGHA_USERNAME }}
+          SSH_USER: ${{ secrets.LINUX_USER_DEVOPS }}
           SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+          POSTGRES__PROD_ENV: ${{ secrets.POSTGRES__SECRET_ENV_FILE }}
           DEPLOY_POSTGRES_NEEDED: true
-          DB_DIR: ${{ inputs.db_dir }}
-          DB_CONTAINER_NAME: ${{ inputs.db_container_name }}
-          NETWORK_NAME: ${{ inputs.network_name }}
-          POSTGRES_ENV: ${{ secrets.POSTGRES__SECRET_ENV_FILE }}
         run: |
           # Debug environment variables
           echo "Debug - Checking if variables are set:"
           echo "SSH_USER is set: $(if [ -n "$SSH_USER" ]; then echo "YES"; else echo "NO"; fi)"
           echo "SERVER_IP is set: $(if [ -n "$SERVER_IP" ]; then echo "YES"; else echo "NO"; fi)"
-          echo "DB_CONTAINER_NAME is: $DB_CONTAINER_NAME"
-          echo "NETWORK_NAME is: $NETWORK_NAME"
-          echo "POSTGRES_ENV is set: $(if [ -n "$POSTGRES_ENV" ]; then echo "YES"; else echo "NO"; fi)"
 
           # Setup SSH
           mkdir -p ~/.ssh/
@@ -156,39 +99,30 @@ jobs:
             StrictHostKeyChecking no
           END
 
-          # Create directory on remote server for the env file
-          ssh prod "mkdir -p ~/$DB_DIR"
+          # Create directory on remote server for the temporary prod env file
+          ssh prod "mkdir -p ~/payloadcms-postgres-db-portfolio2025"
 
-          # Option 1: If we should use the env file from defaults
-          if [ -f "$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env" ]; then
-            echo "Using environment file from defaults"
-            scp $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env prod:~/$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
-          else
-            # Option 2: Or create from secret if defaults file doesn't exist
-            echo "Creating environment file from secret"
-            ssh prod "echo '$POSTGRES_ENV' > ~/$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env"
-          fi
-                    
-          # Ensure network exists
-          ssh prod "docker network create $NETWORK_NAME || true"
+          # Create the temporary prod env file directly on the remote server
+          ssh prod 'echo "$POSTGRES__PROD_ENV" > ~/payloadcms-postgres-db-portfolio2025/postgres-env-prod.env'
 
-          # Create data directories if they don't exist
-          ssh prod "mkdir -p ~/$DB_DIR/data ~/$DB_DIR/init-scripts"
+          # Create Docker network if it doesn't exist
+          # This network is for PayloadCMS & Postgres to communicate, hence "private" in its name
+          ssh prod "docker network create private-payloadcms-pg-dockernet || true"
 
           # Run the container on the remote server
-          ssh prod "docker volume create ${{ inputs.project_prefix }}-postgres-data-prod && \
-          docker volume create ${{ inputs.project_prefix }}-postgres-init-scripts-prod && \
+          ssh prod "docker volume create payloadcms-postgres-data-prod && \
+          docker volume create payloadcms-postgres-init-scripts-prod && \
           docker run -d \
-            --name $DB_CONTAINER_NAME \
-            --network $NETWORK_NAME \
-            --env-file ~/$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env \
+            --name payloadcms-postgres-db-portfolio-prod \
+            --network private-payloadcms-pg-dockernet \
+            --env-file ./payloadcms-postgres-db-portfolio2025/postgres-env-prod.env \
             -p 5432:5432 \
-            -v ${{ inputs.project_prefix }}-postgres-data-prod:/var/lib/postgresql/data \
-            -v ${{ inputs.project_prefix }}-postgres-init-scripts-prod:/docker-entrypoint-initdb.d \
+            -v payloadcms-postgres-data-prod:/var/lib/postgresql/data \
+            -v payloadcms-postgres-init-scripts-prod:/docker-entrypoint-initdb.d \
             postgres:17"
 
           # Verify the container is running in a separate command
-          CONTAINER_STATUS=$(ssh prod "docker ps -f name=$DB_CONTAINER_NAME --format '{{.Status}}'")
+          CONTAINER_STATUS=$(ssh prod "docker ps -f name=payloadcms-postgres-db-portfolio-prod --format '{{.Status}}'")
           if [ -n "$CONTAINER_STATUS" ]; then
             echo "Database container successfully created and running"
             echo "DB_CREATED=true" >> $GITHUB_ENV
@@ -196,13 +130,6 @@ jobs:
             echo "Failed to create database container"
             exit 1
           fi
-
-          # Remove the temporary env file for security
-          echo "Removing temporary environment file..."
-          ssh prod "rm -f ~/$DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env"
-
-          # Clean up local file after transfer
-          rm -f $DB_DIR/${{ inputs.project_prefix }}-postgres-env-prod.env
 
       # Final status output
       - name: Status Report

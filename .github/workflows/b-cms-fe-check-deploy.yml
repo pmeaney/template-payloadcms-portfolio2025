@@ -1,0 +1,249 @@
+name: Frontend Check.  If changes detected, Deploy new image
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+        description: "The deployment environment to use"
+    secrets:
+      LINUX_SSH_PRIVATE_KEY:
+        required: true
+      LINUX_USER_DEVOPS:
+        required: true
+      LINUX_SERVER_IP:
+        required: true
+      GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES:
+        required: true
+      PAYLOAD__SECRET_ENV_FILE:
+        required: true
+    outputs:
+      had_changes:
+        description: "Whether changes were detected"
+        value: ${{ jobs.job-deploy--cms-fe.outputs.changes_detected }}
+      action_taken:
+        description: "Action taken during deployment"
+        value: ${{ jobs.job-deploy--cms-fe.outputs.action }}
+      changed_files:
+        description: "List of files that were changed"
+        value: ${{ jobs.job-deploy--cms-fe.outputs.changed_files }}
+      changed_files_count:
+        description: "Number of files that were changed"
+        value: ${{ jobs.job-deploy--cms-fe.outputs.changed_files_count }}
+jobs:
+  job-deploy--cms-fe:
+    environment: production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # Needed for artifact operations
+    outputs:
+      changes_detected: ${{ steps.check-changes.outputs.changes }}
+      action: ${{ steps.step-deploy--cms-fe.outputs.action_taken }}
+      changed_files: ${{ steps.changed-files.outputs.files }}
+      changed_files_count: ${{ steps.changed-files.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history needed for better change detection
+
+      # Setup GitHub CLI for artifact operations
+      - name: Setup GitHub CLI
+        run: |
+          echo "Setting up GitHub CLI authentication..."
+          echo ${{ github.token }} | gh auth login --with-token
+
+      # Download last successful deployment marker if it exists
+      - name: Download last successful deployment marker
+        id: download-marker
+        continue-on-error: true # Continue if no marker exists yet
+        run: |
+          mkdir -p ./deployment-markers
+
+          # Try to download the artifact using the GitHub CLI
+          echo "Attempting to download latest cms-fe-last-deployed-commit artifact..."
+          gh run download --name cms-fe-last-deployed-commit --dir ./deployment-markers --repo ${{ github.repository }} || true
+
+          # Check if the download was successful
+          if [ -f "./deployment-markers/last-cms-fe-commit.txt" ]; then
+            echo "✅ Successfully downloaded previous deployment marker"
+          else
+            echo "⚠️ No previous deployment marker found or download failed"
+          fi
+
+      # Determine last deployed commit hash
+      - name: Get last deployed commit hash
+        id: get-last-commit
+        run: |
+          if [ -f "./deployment-markers/last-cms-fe-commit.txt" ]; then
+            LAST_COMMIT=$(cat ./deployment-markers/last-cms-fe-commit.txt)
+            echo "Last successfully deployed frontend commit: $LAST_COMMIT"
+            echo "last_commit=$LAST_COMMIT" >> $GITHUB_OUTPUT
+          else
+            # If no marker exists, get a commit far back enough to capture all changes
+            # This will trigger a build on first run
+            LAST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+            echo "No previous deployment marker found. Using initial commit: $LAST_COMMIT"
+            echo "last_commit=$LAST_COMMIT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check PayloadCMS Directory Changes
+        id: check-changes
+        run: |
+          echo "Checking for code changes in PayloadCMS directory since last deployment..."
+
+          # Debug: Show the commit we're comparing against
+          echo "Comparing current commit with: ${{ steps.get-last-commit.outputs.last_commit }}"
+
+          # Check for changes between last deployed commit and current HEAD
+          # Only show file names, not content
+          CHANGES=$(git diff --name-only ${{ steps.get-last-commit.outputs.last_commit }} HEAD -- ./payloadcms-cms-fe-portfolio2025)
+
+          if [ -z "$CHANGES" ]; then
+            echo "No changes detected in payloadcms-cms-fe-portfolio2025 directory since last deployment"
+            echo "changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in payloadcms-cms-fe-portfolio2025 directory since last deployment:"
+            # Only show file names that changed, not their content
+            echo "$CHANGES"
+            echo "changes=true" >> $GITHUB_OUTPUT
+            
+            # Save changed files list to be accessed by the deployment summary
+            echo "$CHANGES" > ./cms-fe-changed-files.txt
+          fi
+
+      # Save changed files to an output instead of using artifacts
+      - name: Set changed files as output
+        if: steps.check-changes.outputs.changes == 'true'
+        id: changed-files
+        run: |
+          # Use GitHub's multiline output syntax
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          cat ./cms-fe-changed-files.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Count the number of changed files correctly
+          CHANGE_COUNT=$(cat ./cms-fe-changed-files.txt | wc -l | xargs)
+          echo "count=$CHANGE_COUNT" >> $GITHUB_OUTPUT
+
+      - name: Install YQ
+        run: |
+          wget https://github.com/mikefarah/yq/releases/download/v4.34.1/yq_linux_amd64 -O /usr/local/bin/yq
+          chmod +x /usr/local/bin/yq
+
+      - name: Load Environment Defaults
+        id: env-defaults
+        run: |
+          # Extract PayloadCMS environment variables from defaults file
+          PAYLOADCMS_DEFAULTS=$(yq e '.payloadcms_defaults' .github/defaults/env-defaults.yml)
+          echo "$PAYLOADCMS_DEFAULTS" > ./payloadcms-cms-fe-portfolio2025/env-defaults.yml
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES }}
+
+      - name: Build Image with Default Secrets, then Publish
+        id: build-publish
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          echo "Building and publishing frontend Docker image..."
+
+          # Build the PayloadCMS Docker image with env file
+          docker build \
+            --build-arg NODE_ENV=production \
+            --build-arg ENV_FILE=env-defaults.yml \
+            -t ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest \
+            ./payloadcms-cms-fe-portfolio2025
+
+          # Push the Docker image to GitHub Container Registry
+          docker push ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest
+
+          #  Delete local env var file (defaults) after transfer
+          rm ./payloadcms-cms-fe-portfolio2025/env-defaults.yml
+
+          echo "BUILT=true" >> $GITHUB_ENV
+          echo "PUSHED=true" >> $GITHUB_ENV
+          echo "build_status=success" >> $GITHUB_OUTPUT
+
+      - name: SSH in and Deploy Updated CMS-Frontend image with Prod Secrets
+        id: step-deploy--cms-fe
+        env:
+          SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
+          SSH_USER: ${{ secrets.LINUX_USER_DEVOPS }}
+          SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
+          GHPAT: ${{ secrets.GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES }}
+          PAYLOADCMS__PROD_ENV: ${{ secrets.PAYLOAD__SECRET_ENV_FILE }}
+        run: |
+          if [[ "${{ steps.check-changes.outputs.changes }}" == "true" ]]; then
+            # Setup SSH - simplified approach
+            mkdir -p ~/.ssh/
+            echo "$SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            
+            # Create SSH config with multiple echo commands instead of heredoc
+            echo "Host prod" > ~/.ssh/config
+            echo "  HostName $SERVER_IP" >> ~/.ssh/config
+            echo "  User $SSH_USER" >> ~/.ssh/config
+            echo "  IdentityFile ~/.ssh/id_ed25519" >> ~/.ssh/config
+            echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+                  
+            # Verify connection to server with simple commands
+            echo "Verifying server connection..."
+            ssh prod "hostname && which docker && uptime"
+            
+            # First authenticate with GHCR on the remote server
+            echo "Authenticating with GitHub Container Registry on remote server..."
+            ssh prod "echo '$GHPAT' | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+            
+            # Create a temporary env file on the remote server
+            echo "Creating temporary environment file..."
+            ssh prod "echo '$PAYLOADCMS__PROD_ENV' > ~/payloadcms-prod-env.env"
+            
+            # Deploy to remote server with environment file
+            ssh prod "docker pull ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest && \
+                      docker rm -f payloadcms-cms-fe-portfolio-prod || true && \
+                      docker run -d \
+                        --name payloadcms-cms-fe-portfolio-prod \
+                        --network private-payloadcms-pg-dockernet \
+                        --network main-network--npm020325 \
+                        -p 3000:3000 \
+                        --env-file ~/payloadcms-prod-env.env \
+                        ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest"
+            
+            echo "Deleting temporarily created prod env file..."
+            ssh prod "rm ~/payloadcms-prod-env.env"
+            
+            echo "Deploying new frontend version..."
+            echo "action_taken=New version deployed" >> $GITHUB_OUTPUT
+            echo "deploy_status=success" >> $GITHUB_ENV
+          else
+            echo "No changes detected, skipping deployment"
+            echo "action_taken=No deployment needed" >> $GITHUB_OUTPUT
+          fi
+
+      # Save deployment marker if deploy was successful
+      - name: Save deployment marker
+        if: steps.check-changes.outputs.changes == 'true' && env.deploy_status == 'success'
+        run: |
+          mkdir -p ./deployment-markers
+          git rev-parse HEAD > ./deployment-markers/last-cms-fe-commit.txt
+          echo "Saved current commit as last deployed commit marker"
+
+      # Upload the marker as an artifact
+      - name: Upload deployment marker
+        if: steps.check-changes.outputs.changes == 'true' && env.deploy_status == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cms-fe-last-deployed-commit
+          path: ./deployment-markers/last-cms-fe-commit.txt
+          retention-days: 90
+
+      - name: Status Report
+        run: |
+          echo "Frontend Deployment Status:"
+          echo "Changes Detected: ${{ steps.check-changes.outputs.changes }}"
+          echo "Action Taken: ${{ steps.step-deploy--cms-fe.outputs.action_taken }}"

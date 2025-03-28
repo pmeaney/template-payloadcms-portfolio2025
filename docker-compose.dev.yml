@@ -4,7 +4,7 @@ services:
     image: postgres:17
     container_name: pg-dev-payloadcms
     env_file:
-      - ./pg-for-payloadcms-portfolio2025/.postgres-env.env
+      - ./pg-for-payloadcms-portfolio2025/dev.env
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
 # and had an issue with its Dockerfile use of corepack, we'll skip usage of the Dockerfile for this dev environment.
 # This way we can keep the Dockerfile in its original form (since it worked fine w/o Docker compose), for use with prod enviornment (Where we deploy with Docker, not docker compose).
   payloadcms-dev-portfolio2025:
-    image: node:18-alpine
+    image: node:20-alpine
     container_name: payloadcms-dev-portfolio2025
     working_dir: /app
     volumes:
