@@ -42,12 +42,12 @@ ENV $(cat .env | xargs)
 ARG SKIP_NEXTJS_BUILD=false
 
 RUN \
+  mkdir -p .next/standalone .next/static && \
   if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
     echo "Skipping Next.js build due to SKIP_NEXTJS_BUILD flag" && \
-    mkdir -p .next/standalone .next/static && \
     echo '{"type":"commonjs"}' > .next/package.json && \
     echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
-    touch .next/skip-build; \
+    echo "true" > .next/skip-build; \
   elif [ -f yarn.lock ]; then yarn run build; \
   elif [ -f package-lock.json ]; then npm run build; \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
@@ -77,8 +77,8 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy the skip-build flag if it exists
-COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build || true
+# Copy the skip-build marker file
+COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
 
 USER nextjs
 
