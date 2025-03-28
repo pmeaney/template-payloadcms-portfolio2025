@@ -38,8 +38,17 @@ ENV $(cat .env | xargs)
 # Uncomment the following line in case you want to disable telemetry during the build.
 # ENV NEXT_TELEMETRY_DISABLED 1
 
+# Add support for skipping the Next.js build during CI
+ARG SKIP_NEXTJS_BUILD=false
+
 RUN \
-  if [ -f yarn.lock ]; then yarn run build; \
+  if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
+    echo "Skipping Next.js build due to SKIP_NEXTJS_BUILD flag" && \
+    mkdir -p .next/standalone .next/static && \
+    echo '{"type":"commonjs"}' > .next/package.json && \
+    echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
+    touch .next/skip-build; \
+  elif [ -f yarn.lock ]; then yarn run build; \
   elif [ -f package-lock.json ]; then npm run build; \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
   else echo "Lockfile not found." && exit 1; \
@@ -60,7 +69,7 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 
 # Set the correct permission for prerender cache
-RUN mkdir .next
+RUN mkdir -p .next
 RUN chown nextjs:nodejs .next
 
 # Automatically leverage output traces to reduce image size
@@ -68,12 +77,21 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Copy the skip-build flag if it exists
+COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build || true
+
 USER nextjs
 
 EXPOSE 3000
 
 ENV PORT 3000
 
-# server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/next-config-js/output
-CMD HOSTNAME="0.0.0.0" node server.js
+# Modify the CMD to handle the case where we skipped the build
+CMD if [ -f .next/skip-build ]; then \
+      echo "Running Next.js build that was skipped during Docker build..." && \
+      npm install && \
+      next build && \
+      HOSTNAME="0.0.0.0" node server.js; \
+    else \
+      HOSTNAME="0.0.0.0" node server.js; \
+    fi

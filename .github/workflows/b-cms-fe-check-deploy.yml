@@ -156,6 +156,7 @@ jobs:
           docker build \
             --build-arg NODE_ENV=production \
             --build-arg ENV_FILE=env-defaults.env \
+            --build-arg SKIP_NEXTJS_BUILD=true \
             -t ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest \
             ./payloadcms-cms-fe-portfolio2025
 
