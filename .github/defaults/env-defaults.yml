@@ -5,7 +5,7 @@
 # The production containers will then be created from the images,
 # at which point production secrets will be injected into the container
 # to overwrite these defaults.
-# (the production secrets will be stored as github action environment secrets (e.g. environment named "production", with three items-- one per set. 
+# (the production secrets will be stored as github action environment secrets (e.g. environment named "production", with three items-- one per set.
 #  and of course, ensure that those production secrets are brand new values for the relevant security-relevant items))
 ---
 postgres_defaults: |
