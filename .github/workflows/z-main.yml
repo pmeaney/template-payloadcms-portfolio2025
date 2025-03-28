@@ -19,7 +19,7 @@ jobs:
       contents: read
     secrets:
       LINUX_SSH_PRIVATE_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
-      LINUX_USER_DEVOPS: ${{ secrets.LINUX_USER_DEVOPS }}
+      LINUX_USER_CICD: ${{ secrets.LINUX_CICDGHA_USERNAME }}
       LINUX_SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
       POSTGRES__SECRET_ENV_FILE: ${{ secrets.POSTGRES__SECRET_ENV_FILE }}
 
@@ -34,7 +34,7 @@ jobs:
       actions: write # Explicitly grant artifact permissions
     secrets:
       LINUX_SSH_PRIVATE_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
-      LINUX_USER_DEVOPS: ${{ secrets.LINUX_USER_DEVOPS }}
+      LINUX_USER_CICD: ${{ secrets.LINUX_CICDGHA_USERNAME }}
       LINUX_SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
       GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES: ${{ secrets.GHPAT__032725_REPO_WORKFLOW_WRDPACKAGES }}
       PAYLOAD__SECRET_ENV_FILE: ${{ secrets.PAYLOAD__SECRET_ENV_FILE }}

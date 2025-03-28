@@ -10,7 +10,7 @@ on:
     secrets:
       LINUX_SSH_PRIVATE_KEY:
         required: true
-      LINUX_USER_DEVOPS:
+      LINUX_USER_CICD:
         required: true
       LINUX_SERVER_IP:
         required: true
@@ -173,7 +173,7 @@ jobs:
         id: step-deploy--cms-fe
         env:
           SSH_KEY: ${{ secrets.LINUX_SSH_PRIVATE_KEY }}
-          SSH_USER: ${{ secrets.LINUX_USER_DEVOPS }}
+          SSH_USER: ${{ secrets.LINUX_USER_CICD }}
           SERVER_IP: ${{ secrets.LINUX_SERVER_IP }}
           GHPAT: ${{ secrets.GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES }}
           PAYLOADCMS__PROD_ENV: ${{ secrets.PAYLOAD__SECRET_ENV_FILE }}
