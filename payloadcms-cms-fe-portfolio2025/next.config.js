@@ -22,6 +22,15 @@ const nextConfig = {
   },
   reactStrictMode: true,
   redirects,
+  output: 'standalone',
+  
+  // Skip static generation if flag is set during CI build
+  ...(process.env.NEXT_DISABLE_STATIC_GENERATION === 'true' 
+    ? {
+        // Extremely short timeout will effectively skip static generation
+        staticPageGenerationTimeout: 0.1
+      } 
+    : {})
 }
 
 export default withPayload(nextConfig, { devBundleServerPackages: false })
