@@ -48,6 +48,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp next.config.js .next/ && \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
+      cp redirects.js .next/ && \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build normally \
@@ -68,6 +69,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
+      cp redirects.js /runtime-prep/ && \
       cp -r .next /runtime-prep/; \
     else \
       echo "Creating build output directory" && \
@@ -77,7 +79,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp next.config.js /runtime-prep/ && \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
-      cp tsconfig.json /runtime-prep/; \
+      cp tsconfig.json /runtime-prep/ && \
+      cp redirects.js /runtime-prep/; \
     fi
 
 # Production image, copy all the files and run next
