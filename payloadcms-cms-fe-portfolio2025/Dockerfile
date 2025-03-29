@@ -109,19 +109,20 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Modify the CMD to handle runtime build with the proper permissions
 CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
       NEXT_SKIP_DB_CONNECT=true npx next build && \
       echo "Running database migrations..." && \
-      npm run payload migrate:create && \
-      npm run payload migrate && \
-      # npx payload migrate && \
+      # Use npx instead of npm run for direct command execution
+      npx payload migrate:create || true && \
+      npx payload migrate && \
+      # Start the application
       HOSTNAME="0.0.0.0" node server.js; \
     else \
       echo "Running database migrations..." && \
-      npm run payload migrate:create && \
-      npm run payload migrate && \
-      # npx payload migrate && \
+      # Use npx instead of npm run for direct command execution
+      npx payload migrate:create || true && \
+      npx payload migrate && \
+      # Start the application
       HOSTNAME="0.0.0.0" node server.js; \
     fi
