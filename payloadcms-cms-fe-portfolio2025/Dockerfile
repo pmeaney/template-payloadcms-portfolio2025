@@ -1,8 +1,6 @@
 # To use this Dockerfile, you have to set `output: 'standalone'` in your next.config.js file.
 # From https://github.com/vercel/next.js/blob/canary/examples/with-docker/Dockerfile
 
-# FROM node:22.12.0-alpine AS base
-# Corepack seems to have a problem with Node v22.  Going to try v20
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
@@ -19,7 +17,6 @@ RUN \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
   else echo "Lockfile not found." && exit 1; \
   fi
-
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -41,10 +38,17 @@ ENV $(cat .env | xargs)
 # Add support for skipping the Next.js build during CI
 ARG SKIP_NEXTJS_BUILD=false
 
+# If we're skipping the build during Docker image creation, install dependencies
+# so they're available for the runtime build
 RUN \
   mkdir -p .next/standalone .next/static && \
   if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
-    echo "Skipping Next.js build due to SKIP_NEXTJS_BUILD flag" && \
+    echo "Preparing for runtime build..." && \
+    if [ -f yarn.lock ]; then yarn install; \
+    elif [ -f package-lock.json ]; then npm install; \
+    elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm install; \
+    else echo "Lockfile not found." && exit 1; \
+    fi && \
     echo '{"type":"commonjs"}' > .next/package.json && \
     echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
     echo "true" > .next/skip-build; \
@@ -68,9 +72,12 @@ RUN adduser --system --uid 1001 nextjs
 # Remove this line if you do not have this folder
 COPY --from=builder /app/public ./public
 
-# Set the correct permission for prerender cache
+# Set the correct permission for prerender cache and node_modules
 RUN mkdir -p .next
-RUN chown nextjs:nodejs .next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./package-lock.json*
+RUN chown -R nextjs:nodejs /app
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
@@ -80,16 +87,16 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Copy the skip-build marker file
 COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
 
+# Switch to nextjs user
 USER nextjs
 
 EXPOSE 3000
 
 ENV PORT 3000
 
-# Modify the CMD to handle the case where we skipped the build
+# Modify the CMD to handle runtime build with the proper permissions
 CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
-      npm install && \
       next build && \
       HOSTNAME="0.0.0.0" node server.js; \
     else \
