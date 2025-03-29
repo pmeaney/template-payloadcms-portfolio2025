@@ -51,7 +51,13 @@ RUN \
     fi && \
     echo '{"type":"commonjs"}' > .next/package.json && \
     echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
-    echo "true" > .next/skip-build; \
+    echo "true" > .next/skip-build && \
+    # Copy source files needed for runtime build
+    cp -r ./src ./.next/src && \
+    cp next.config.js ./.next/ && \
+    cp tsconfig.json ./.next/ && \
+    cp postcss.config.js ./.next/ && \
+    cp tailwind.config.mjs ./.next/; \
   elif [ -f yarn.lock ]; then yarn run build; \
   elif [ -f package-lock.json ]; then npm run build; \
   elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
@@ -69,7 +75,7 @@ ENV NODE_ENV production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Remove this line if you do not have this folder
+# Copy public directory
 COPY --from=builder /app/public ./public
 
 # Set the correct permission for prerender cache and node_modules
@@ -77,15 +83,22 @@ RUN mkdir -p .next
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./package-lock.json*
-RUN chown -R nextjs:nodejs /app
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
+# Ensure all configuration files are copied for runtime build
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.js ./next.config.js
+COPY --from=builder --chown=nextjs:nodejs /app/postcss.config.js ./postcss.config.js
+COPY --from=builder --chown=nextjs:nodejs /app/tailwind.config.mjs ./tailwind.config.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+
+# Copy source files if we're doing a runtime build
+COPY --from=builder --chown=nextjs:nodejs /app/.next/src ./src 2>/dev/null || :
+
+# Copy Next.js build output
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build 2>/dev/null || :
 
-# Copy the skip-build marker file
-COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
+RUN chown -R nextjs:nodejs /app
 
 # Switch to nextjs user
 USER nextjs
@@ -97,7 +110,8 @@ ENV PORT 3000
 # Modify the CMD to handle runtime build with the proper permissions
 CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
-      npx next build && \
+      # Set environment variables to skip database connections during build
+      PAYLOAD_SKIP_MIGRATION=true NEXT_SKIP_DB_CONNECT=true npx next build && \
       HOSTNAME="0.0.0.0" node server.js; \
     else \
       HOSTNAME="0.0.0.0" node server.js; \
