@@ -97,7 +97,7 @@ ENV PORT 3000
 # Modify the CMD to handle runtime build with the proper permissions
 CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
-      next build && \
+      npx next build && \
       HOSTNAME="0.0.0.0" node server.js; \
     else \
       HOSTNAME="0.0.0.0" node server.js; \
