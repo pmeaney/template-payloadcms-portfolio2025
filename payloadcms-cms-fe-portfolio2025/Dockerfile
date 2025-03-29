@@ -1,11 +1,8 @@
 # To use this Dockerfile, you have to set `output: 'standalone'` in your next.config.js file.
-# From https://github.com/vercel/next.js/blob/canary/examples/with-docker/Dockerfile
-
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
@@ -14,7 +11,7 @@ COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
 RUN \
   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
+  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile && pnpm rebuild; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
@@ -24,7 +21,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Copies the CICD provided `env-defaults.env` file to `.env` in the container
+# Copies the CICD provided env file to .env in the container
 ARG ENV_FILE
 COPY ${ENV_FILE} .env
 ENV $(cat .env | xargs)
@@ -32,9 +29,10 @@ ENV $(cat .env | xargs)
 # Add support for skipping the Next.js build during CI
 ARG SKIP_NEXTJS_BUILD=false
 
-# If we're skipping the build during Docker image creation, install dependencies
-# so they're available for the runtime build
+# Prepare for different build strategies
 RUN mkdir -p .next/standalone .next/static
+
+# If skipping build, prepare files for runtime build
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Preparing for runtime build..." && \
       if [ -f yarn.lock ]; then yarn install; \
@@ -45,16 +43,41 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo '{"type":"commonjs"}' > .next/package.json && \
       echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
       echo "true" > .next/skip-build && \
-      mkdir -p .next/src && \
+      # Copy necessary files for runtime build \
       cp -r ./src .next/ && \
       cp next.config.js .next/ && \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp tailwind.config.mjs .next/; \
-    elif [ -f yarn.lock ]; then yarn run build; \
-    elif [ -f package-lock.json ]; then npm run build; \
-    elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
-    else echo "Lockfile not found." && exit 1; \
+    else \
+      # Run the build normally \
+      if [ -f yarn.lock ]; then yarn run build; \
+      elif [ -f package-lock.json ]; then npm run build; \
+      elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm run build; \
+      else echo "Lockfile not found." && exit 1; \
+      fi; \
+    fi
+
+# Create a separate preparation stage for runtime files
+FROM builder AS prepare-runtime
+RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
+      echo "Creating runtime preparation directory" && \
+      mkdir -p /runtime-prep/src && \
+      cp -r ./src/* /runtime-prep/src/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/ && \
+      cp -r .next /runtime-prep/; \
+    else \
+      echo "Creating build output directory" && \
+      mkdir -p /runtime-prep && \
+      cp -r .next /runtime-prep/ && \
+      cp -r public /runtime-prep/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/; \
     fi
 
 # Production image, copy all the files and run next
@@ -63,41 +86,24 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Copy public directory and standard files
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.js ./next.config.js
-COPY --from=builder /app/postcss.config.js ./postcss.config.js
-COPY --from=builder /app/tailwind.config.mjs ./tailwind.config.mjs
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
+# Copy prepared files from the preparation stage
+COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep .
 
-# Set the correct permission for prerender cache and node_modules
-RUN mkdir -p .next
+# Setup dependencies
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/package-lock.json* ./package-lock.json* || true
 
-# Create src directory conditionally
-RUN mkdir -p ./src
-
-# Copy either runtime or built files
-COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build || true
-COPY --from=builder --chown=nextjs:nodejs /app/.next/src ./src || true
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./ || true
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static || true
-
-# Copy source files if they weren't copied by the previous step
-COPY --from=builder --chown=nextjs:nodejs /app/src ./src || true
+# Add public directory which is always needed
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 RUN chown -R nextjs:nodejs /app
 
-# Switch to nextjs user
 USER nextjs
 
 EXPOSE 3000
-
 ENV PORT 3000
 
 # Modify the CMD to handle runtime build with the proper permissions
