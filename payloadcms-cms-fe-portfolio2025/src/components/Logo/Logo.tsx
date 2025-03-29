@@ -18,7 +18,6 @@ export const Logo = (props: Props) => {
     <div className="flex flex-col-mt-2 w-full">
       <h1 className={clsx('text-[20px] text-white hover:text-green-200 font-extrabold pr-5', className)}>Patrick Meaney</h1>
       <h2 className={clsx('text-[20px] text-gray-300 hover:text-green-200', className)}>Full Stack | DevOps | MarTech</h2>
-{/* TEST */}
     </div>
     // <img
     //   alt="Payload Logo"
