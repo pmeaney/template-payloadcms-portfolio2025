@@ -158,6 +158,7 @@ jobs:
             --build-arg ENV_FILE=env-defaults.env \
             -t ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest \
             ./payloadcms-cms-fe-portfolio2025
+            
 
           # Push the Docker image to GitHub Container Registry
           docker push ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest
