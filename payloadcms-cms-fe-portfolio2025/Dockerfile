@@ -114,10 +114,14 @@ CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
       NEXT_SKIP_DB_CONNECT=true npx next build && \
       echo "Running database migrations..." && \
-      npx payload migrate && \
+      npm run payload migrate:create && \
+      npm run payload migrate && \
+      # npx payload migrate && \
       HOSTNAME="0.0.0.0" node server.js; \
     else \
       echo "Running database migrations..." && \
-      npx payload migrate && \
+      npm run payload migrate:create && \
+      npm run payload migrate && \
+      # npx payload migrate && \
       HOSTNAME="0.0.0.0" node server.js; \
     fi
