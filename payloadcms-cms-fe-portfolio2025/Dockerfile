@@ -112,17 +112,19 @@ ENV PORT 3000
 CMD if [ -f .next/skip-build ]; then \
       echo "Running Next.js build that was skipped during Docker build..." && \
       NEXT_SKIP_DB_CONNECT=true npx next build && \
+      echo "Ensuring migrations directory exists..." && \
+      mkdir -p /app/src/migrations && \
       echo "Running database migrations..." && \
-      # Use npx instead of npm run for direct command execution
-      npx payload migrate:create || true && \
+      npx payload migrate:create && \
       npx payload migrate && \
-      # Start the application
-      HOSTNAME="0.0.0.0" node server.js; \
+      echo "Starting Next.js application..." && \
+      npx next start; \
     else \
+      echo "Ensuring migrations directory exists..." && \
+      mkdir -p /app/src/migrations && \
       echo "Running database migrations..." && \
-      # Use npx instead of npm run for direct command execution
-      npx payload migrate:create || true && \
+      npx payload migrate:create && \
       npx payload migrate && \
-      # Start the application
-      HOSTNAME="0.0.0.0" node server.js; \
+      echo "Starting Next.js application..." && \
+      npx next start; \
     fi
