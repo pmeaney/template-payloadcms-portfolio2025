@@ -148,9 +148,9 @@ else\n\
   echo "Container will remain running for debugging."\n\
   # Keep container alive for debugging\n\
   tail -f /dev/null\n\
-fi' > /app/docker-entrypoint.sh
+fi' > /app/entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Use the debug entrypoint script
-CMD ["/app/docker-entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]

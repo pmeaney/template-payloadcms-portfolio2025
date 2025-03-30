@@ -12,13 +12,6 @@ if [ -z "$PAYLOAD_SECRET" ]; then
   exit 1
 fi
 
-# Print environment variables for debugging (redact sensitive info)
-echo "==== DEBUGGING: Environment Variables ===="
-echo "DATABASE_URI: [REDACTED]"
-echo "PAYLOAD_SECRET: [REDACTED]"
-echo "NEXT_PUBLIC_SERVER_URL: $NEXT_PUBLIC_SERVER_URL"
-echo "========================================"
-
 # Extract database connection details from DATABASE_URI
 DB_HOST=$(echo $DATABASE_URI | sed -E 's/.*@([^:]+):.*/\1/')
 DB_PORT=$(echo $DATABASE_URI | sed -E 's/.*:([0-9]+)\/.*/\1/')
@@ -50,25 +43,31 @@ echo "PostgreSQL is available!"
 echo "Ensuring migrations directory exists..."
 mkdir -p /app/src/migrations
 
+npm run payload migrate:status
+
+# Drops all entities from the database and re-runs all migrations from scratch.
+# and re-runs all migrations from scratch.
+npm run payload migrate:fresh
+
 # Run migration status check
 echo "Checking migration status..."
-npx payload migrate:status
+npm run payload migrate:status
 
 # Create migration if needed
 echo "Creating migration if needed..."
-npx payload migrate:create
+npm run payload migrate:create
 
 # Apply migrations
 echo "Running migrations..."
-npx payload migrate
+npm run payload migrate
 
 # Build Next.js if needed
 if [ -f .next/skip-build ]; then
   echo "Running Next.js build that was skipped during Docker build..."
   # Use NEXT_SKIP_DB_CONNECT to avoid database access during build
-  NEXT_SKIP_DB_CONNECT=true npx next build
+  NEXT_SKIP_DB_CONNECT=true npm run build
 fi
 
 # Start the application using the standalone server
 echo "Starting Next.js application with standalone server..."
-exec node .next/standalone/server.js
+exec npm run start
