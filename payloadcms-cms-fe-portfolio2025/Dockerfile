@@ -91,13 +91,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
 # Copy src directory beforehand so it's available for the skip build steps
 COPY --from=builder --chown=nextjs:nodejs /app/src ./src
-RUN if [ -f .next/skip-build ]; then \
-      cp /app/next.config.js ./ && \
-      cp /app/postcss.config.js ./ && \
-      cp /app/tailwind.config.mjs ./ && \
-      cp /app/tsconfig.json ./ && \
-      cp /app/redirects.js ./; \
-    fi
+COPY --from=builder /app/next.config.js ./next.config.js
+COPY --from=builder /app/postcss.config.js ./postcss.config.js
+COPY --from=builder /app/tailwind.config.mjs ./tailwind.config.mjs
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/redirects.js ./redirects.js
 
 # Copy entrypoint script and make it executable
 COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
