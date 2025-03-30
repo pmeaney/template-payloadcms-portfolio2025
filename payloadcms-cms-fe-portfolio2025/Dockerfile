@@ -115,8 +115,8 @@ CMD if [ -f .next/skip-build ]; then \
       echo "Ensuring migrations directory exists..." && \
       mkdir -p /app/src/migrations && \
       echo "Running database migrations..." && \
-      npx payload migrate:status && \
-      npx payload migrate:create --name init && \
+      npm run payload migrate:status && \
+      npm run payload migrate:create && \
       echo "Running migrations..." && \
       npx payload migrate && \
       echo "Starting Next.js application..." && \
@@ -125,8 +125,8 @@ CMD if [ -f .next/skip-build ]; then \
       echo "Ensuring migrations directory exists..." && \
       mkdir -p /app/src/migrations && \
       echo "Running database migrations..." && \
-      npx payload migrate:status && \
-      npx payload migrate:create --name init && \
+      npm run payload migrate:status && \
+      npm run payload migrate:create && \
       echo "Running migrations..." && \
       npx payload migrate && \
       echo "Starting Next.js application..." && \
