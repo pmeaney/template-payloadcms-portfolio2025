@@ -15,7 +15,7 @@ RUN \
   if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
   elif [ -f package-lock.json ]; then npm ci; \
   elif [ -f pnpm-lock.yaml ]; then \
-    corepack enable pnpm && \
+    npm install -g pnpm@10.3.0 && \
     NODE_OPTIONS=--no-deprecation pnpm i --frozen-lockfile; \
   else echo "Lockfile not found." && exit 1; \
   fi
@@ -44,7 +44,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Preparing for runtime build..." && \
       if [ -f yarn.lock ]; then yarn install; \
       elif [ -f package-lock.json ]; then npm install; \
-      elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && NODE_OPTIONS=--no-deprecation pnpm install; \
+      elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm@10.3.0 && NODE_OPTIONS=--no-deprecation pnpm install; \
       else echo "Lockfile not found." && exit 1; \
       fi && \
       mkdir -p .next/standalone .next/static && \
@@ -55,7 +55,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       # Run the build normally \
       if [ -f yarn.lock ]; then yarn run build; \
       elif [ -f package-lock.json ]; then npm run build; \
-      elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && NODE_OPTIONS=--no-deprecation pnpm run build; \
+      elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm@10.3.0 && NODE_OPTIONS=--no-deprecation pnpm run build; \
       else echo "Lockfile not found." && exit 1; \
       fi; \
     fi
