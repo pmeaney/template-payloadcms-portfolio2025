@@ -110,7 +110,7 @@ EXPOSE 3000
 ENV PORT 3000
 
 # Use ENTRYPOINT to ensure our script is the main entry point
-COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh /entrypoint.sh
+COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # No ENTRYPOINT override, just use the script directly
