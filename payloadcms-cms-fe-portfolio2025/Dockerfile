@@ -181,8 +181,8 @@ fi\n\
 echo "Starting Next.js application with standalone server..."\n\
 exec node .next/standalone/server.js' > /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
-# Print directory contents to verify entrypoint.sh exists
-RUN ls -la /app/
+# Print directory contents to verify entrypoint.sh exists and is executable
+RUN ls -la /app/ && cat /app/entrypoint.sh | head -5
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
@@ -190,5 +190,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Use entrypoint script
-CMD ["/app/entrypoint.sh"]
+# Use direct bash execution of the entrypoint script
+CMD ["bash", "/app/entrypoint.sh"]

@@ -69,6 +69,6 @@ if [ -f .next/skip-build ]; then
   NEXT_SKIP_DB_CONNECT=true npx next build
 fi
 
-# Start the application
-echo "Starting Next.js application..."
-exec npx next start
+# Start the application using the standalone server
+echo "Starting Next.js application with standalone server..."
+exec node .next/standalone/server.js
