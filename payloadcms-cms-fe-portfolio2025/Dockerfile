@@ -6,9 +6,10 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies using npm only
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Install dependencies using pnpm
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm@10.3.0 && \
+    pnpm install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -30,7 +31,7 @@ RUN mkdir -p .next/standalone .next/static
 # If skipping build, prepare files for runtime build
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Preparing for runtime build..." && \
-      npm install && \
+      NODE_OPTIONS=--no-deprecation pnpm install && \
       echo '{"type":"commonjs"}' > .next/package.json && \
       echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
       echo "true" > .next/skip-build && \
@@ -43,7 +44,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build with migrations \
-      npm run ci; \
+      NODE_OPTIONS=--no-deprecation pnpm run ci; \
     fi
 
 # Create a separate preparation stage for runtime files
@@ -57,6 +58,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/ && \
       cp -r .next /runtime-prep/; \
     else \
       echo "Creating build output directory" && \
@@ -67,7 +69,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
-      cp redirects.js /runtime-prep/; \
+      cp redirects.js /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/; \
     fi
 
 # Production image, copy all the files and run next
@@ -75,6 +78,9 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
+
+# Install PostgreSQL client for database connection checks
+RUN apk add --no-cache postgresql-client
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -89,6 +95,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# Copy entrypoint script for database migrations and startup
+COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
@@ -96,11 +106,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Modify the CMD to handle runtime build with the proper permissions
-CMD if [ -f .next/skip-build ]; then \
-      echo "Running Next.js build that was skipped during Docker build..." && \
-      npm run ci && \
-      HOSTNAME="0.0.0.0" node server.js; \
-    else \
-      HOSTNAME="0.0.0.0" node server.js; \
-    fi
+# Use the entrypoint script for database migrations and application startup
+CMD ["./entrypoint.sh"]
