@@ -43,31 +43,37 @@ echo "PostgreSQL is available!"
 echo "Ensuring migrations directory exists..."
 mkdir -p /app/src/migrations
 
-npm run payload migrate:status
+# Install pnpm if needed
+if ! command -v pnpm &> /dev/null; then
+  echo "Installing pnpm..."
+  npm install -g pnpm@10.3.0
+fi
+
+NODE_OPTIONS=--no-deprecation pnpm run payload migrate:status
 
 # Drops all entities from the database and re-runs all migrations from scratch.
 # and re-runs all migrations from scratch.
-npm run payload migrate:fresh
+NODE_OPTIONS=--no-deprecation pnpm run payload migrate:fresh
 
 # Run migration status check
 echo "Checking migration status..."
-npm run payload migrate:status
+NODE_OPTIONS=--no-deprecation pnpm run payload migrate:status
 
 # Create migration if needed
 echo "Creating migration if needed..."
-npm run payload migrate:create
+NODE_OPTIONS=--no-deprecation pnpm run payload migrate:create
 
 # Apply migrations
 echo "Running migrations..."
-npm run payload migrate
+NODE_OPTIONS=--no-deprecation pnpm run payload migrate
 
 # Build Next.js if needed
 if [ -f .next/skip-build ]; then
   echo "Running Next.js build that was skipped during Docker build..."
   # Use NEXT_SKIP_DB_CONNECT to avoid database access during build
-  NEXT_SKIP_DB_CONNECT=true npm run build
+  NEXT_SKIP_DB_CONNECT=true NODE_OPTIONS=--no-deprecation pnpm run build
 fi
 
 # Start the application using the standalone server
 echo "Starting Next.js application with standalone server..."
-exec npm run start
+exec NODE_OPTIONS=--no-deprecation pnpm run start

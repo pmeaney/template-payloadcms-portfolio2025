@@ -14,6 +14,10 @@ RUN npm install -g pnpm@10.3.0 && \
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+
+# Install pnpm in the builder stage
+RUN npm install -g pnpm@10.3.0
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -79,8 +83,9 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
-# Install PostgreSQL client for database connection checks
-RUN apk add --no-cache postgresql-client
+# Install PostgreSQL client for database connection checks and pnpm
+RUN apk add --no-cache postgresql-client && \
+    npm install -g pnpm@10.3.0
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
