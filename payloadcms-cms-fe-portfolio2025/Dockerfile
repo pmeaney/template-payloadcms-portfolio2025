@@ -1,24 +1,14 @@
 # To use this Dockerfile, you have to set `output: 'standalone'` in your next.config.js file.
-# From https://github.com/vercel/next.js/blob/canary/examples/with-docker/Dockerfile
-
-FROM node:22.12.0-alpine AS base
+FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* ./
-RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then \
-    npm install -g pnpm@10.3.0 && \
-    NODE_OPTIONS=--no-deprecation pnpm i --frozen-lockfile; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
+# Install dependencies using npm only
+COPY package.json package-lock.json* ./
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -31,33 +21,53 @@ ARG ENV_FILE
 COPY ${ENV_FILE} .env
 ENV $(cat .env | xargs)
 
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry during the build.
-# ENV NEXT_TELEMETRY_DISABLED 1
-
 # Add support for skipping the Next.js build during CI
 ARG SKIP_NEXTJS_BUILD=false
+
+# Prepare for different build strategies
+RUN mkdir -p .next/standalone .next/static
 
 # If skipping build, prepare files for runtime build
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Preparing for runtime build..." && \
-      if [ -f yarn.lock ]; then yarn install; \
-      elif [ -f package-lock.json ]; then npm install; \
-      elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm@10.3.0 && NODE_OPTIONS=--no-deprecation pnpm install; \
-      else echo "Lockfile not found." && exit 1; \
-      fi && \
-      mkdir -p .next/standalone .next/static && \
+      npm install && \
       echo '{"type":"commonjs"}' > .next/package.json && \
       echo 'module.exports = {props: {}}' > .next/standalone/server.js && \
-      echo "true" > .next/skip-build; \
+      echo "true" > .next/skip-build && \
+      # Copy necessary files for runtime build \
+      cp -r ./src .next/ && \
+      cp next.config.js .next/ && \
+      cp tsconfig.json .next/ && \
+      cp postcss.config.js .next/ && \
+      cp redirects.js .next/ && \
+      cp tailwind.config.mjs .next/; \
     else \
-      # Run the build normally \
-      if [ -f yarn.lock ]; then yarn run build; \
-      elif [ -f package-lock.json ]; then npm run build; \
-      elif [ -f pnpm-lock.yaml ]; then npm install -g pnpm@10.3.0 && NODE_OPTIONS=--no-deprecation pnpm run build; \
-      else echo "Lockfile not found." && exit 1; \
-      fi; \
+      # Run the build with migrations \
+      npm run ci; \
+    fi
+
+# Create a separate preparation stage for runtime files
+FROM builder AS prepare-runtime
+RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
+      echo "Creating runtime preparation directory" && \
+      mkdir -p /runtime-prep/src && \
+      cp -r ./src/* /runtime-prep/src/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/ && \
+      cp redirects.js /runtime-prep/ && \
+      cp -r .next /runtime-prep/; \
+    else \
+      echo "Creating build output directory" && \
+      mkdir -p /runtime-prep && \
+      cp -r .next /runtime-prep/ && \
+      cp -r public /runtime-prep/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/ && \
+      cp redirects.js /runtime-prep/; \
     fi
 
 # Production image, copy all the files and run next
@@ -65,47 +75,32 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
 
-# Install PostgreSQL client for pg_isready and other utilities
-RUN apk add --no-cache postgresql-client
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Copy prepared files from the preparation stage
+COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep .
 
-# Copy public directory 
-COPY --from=builder /app/public ./public
-
-# Set the correct permission for prerender cache
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
-
-# Copy build output and dependency files
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Setup dependencies
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
-# If we're in skip build mode, copy the source code for runtime build
-COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
-# Copy src directory beforehand so it's available for the skip build steps
-COPY --from=builder --chown=nextjs:nodejs /app/src ./src
-COPY --from=builder /app/next.config.js ./next.config.js
-COPY --from=builder /app/postcss.config.js ./postcss.config.js
-COPY --from=builder /app/tailwind.config.mjs ./tailwind.config.mjs
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/redirects.js ./redirects.js
+# Add public directory which is always needed
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy entrypoint script and make it executable
-COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+RUN chown -R nextjs:nodejs /app
 
-# We don't need to chown all files since we've done it for each copy
 USER nextjs
 
 EXPOSE 3000
 ENV PORT 3000
 
-# Use the entrypoint script
-CMD ["./entrypoint.sh"]
+# Modify the CMD to handle runtime build with the proper permissions
+CMD if [ -f .next/skip-build ]; then \
+      echo "Running Next.js build that was skipped during Docker build..." && \
+      npm run ci && \
+      HOSTNAME="0.0.0.0" node server.js; \
+    else \
+      HOSTNAME="0.0.0.0" node server.js; \
+    fi

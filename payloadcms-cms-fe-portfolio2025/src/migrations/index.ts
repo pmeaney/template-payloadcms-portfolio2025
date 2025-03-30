@@ -1,15 +1,9 @@
-import * as migration_20250330_160336 from './20250330_160336';
+import * as migration_20250330_194131_initial_migration from './20250330_194131_initial_migration';
 
-// Export migrations in CommonJS format for compatibility
 export const migrations = [
   {
-    up: migration_20250330_160336.up,
-    down: migration_20250330_160336.down,
-    name: '20250330_160336'
+    up: migration_20250330_194131_initial_migration.up,
+    down: migration_20250330_194131_initial_migration.down,
+    name: '20250330_194131_initial_migration'
   },
 ];
-
-// For CommonJS require compatibility
-module.exports = {
-  migrations
-};

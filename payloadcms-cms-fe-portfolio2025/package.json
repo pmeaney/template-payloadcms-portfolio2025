@@ -17,7 +17,7 @@
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "reinstall": "cross-env NODE_OPTIONS=--no-deprecation rm -rf node_modules && rm pnpm-lock.yaml && pnpm --ignore-workspace install",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
-    "ci": "cross-env NODE_OPTIONS=--no-deprecation payload migrate && next build"
+    "ci": "cross-env NODE_OPTIONS=--no-deprecation payload migrate --force-accept-warning && npm run build"
   },
   "dependencies": {
     "@payloadcms/admin-bar": "latest",
