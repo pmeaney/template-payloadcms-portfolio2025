@@ -107,7 +107,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Copy entrypoint script before changing user
 COPY entrypoint.sh /app/entrypoint.sh
-RUN ls -la 
+# Print directory contents to verify entrypoint.sh exists
+RUN ls -la /app/
 RUN chmod +x /app/entrypoint.sh
 RUN chown -R nextjs:nodejs /app
 
