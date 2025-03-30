@@ -89,9 +89,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 # If we're in skip build mode, copy the source code for runtime build
 COPY --from=builder --chown=nextjs:nodejs /app/.next/skip-build ./.next/skip-build
+# Copy src directory beforehand so it's available for the skip build steps
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 RUN if [ -f .next/skip-build ]; then \
-      mkdir -p ./src && \
-      cp -r /app/src/* ./src/ && \
       cp /app/next.config.js ./ && \
       cp /app/postcss.config.js ./ && \
       cp /app/tailwind.config.mjs ./ && \
