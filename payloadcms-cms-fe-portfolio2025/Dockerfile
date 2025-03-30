@@ -105,11 +105,84 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy entrypoint script before changing user
-COPY entrypoint.sh /app/entrypoint.sh
+# Create entrypoint script directly in the container
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Check if required environment variables exist\n\
+if [ -z "$DATABASE_URI" ]; then\n\
+  echo "Error: DATABASE_URI environment variable is not set"\n\
+  exit 1\n\
+fi\n\
+\n\
+if [ -z "$PAYLOAD_SECRET" ]; then\n\
+  echo "Error: PAYLOAD_SECRET environment variable is not set"\n\
+  exit 1\n\
+fi\n\
+\n\
+# Print environment variables for debugging (redact sensitive info)\n\
+echo "==== DEBUGGING: Environment Variables ===="\n\
+echo "DATABASE_URI: [REDACTED]"\n\
+echo "PAYLOAD_SECRET: [REDACTED]"\n\
+echo "NEXT_PUBLIC_SERVER_URL: $NEXT_PUBLIC_SERVER_URL"\n\
+echo "========================================"\n\
+\n\
+# Extract database connection details from DATABASE_URI\n\
+DB_HOST=$(echo $DATABASE_URI | sed -E '"'"'s/.*@([^:]+):.*/\\1/'"'"')\n\
+DB_PORT=$(echo $DATABASE_URI | sed -E '"'"'s/.*:([0-9]+)\\/.*/\\1/'"'"')\n\
+DB_NAME=$(echo $DATABASE_URI | sed -E '"'"'s/.*\\/([^?]+).*/\\1/'"'"')\n\
+DB_USER=$(echo $DATABASE_URI | sed -E '"'"'s/.*:\\/\\/([^:]+):.*/\\1/'"'"')\n\
+\n\
+# Function to test if postgres is ready\n\
+postgres_ready() {\n\
+  pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" > /dev/null 2>&1\n\
+  return $?\n\
+}\n\
+\n\
+echo "Waiting for PostgreSQL database..."\n\
+RETRIES=30\n\
+until postgres_ready || [ $RETRIES -eq 0 ]; do\n\
+  echo "Waiting for PostgreSQL to become available... $((RETRIES)) remaining attempts..."\n\
+  RETRIES=$((RETRIES-1))\n\
+  sleep 3\n\
+done\n\
+\n\
+if [ $RETRIES -eq 0 ]; then\n\
+  echo "Error: PostgreSQL not available after multiple attempts"\n\
+  exit 1\n\
+fi\n\
+\n\
+echo "PostgreSQL is available!"\n\
+\n\
+# Ensure migrations directory exists\n\
+echo "Ensuring migrations directory exists..."\n\
+mkdir -p /app/src/migrations\n\
+\n\
+# Run migration status check\n\
+echo "Checking migration status..."\n\
+npx payload migrate:status\n\
+\n\
+# Create migration if needed\n\
+echo "Creating migration if needed..."\n\
+npx payload migrate:create\n\
+\n\
+# Apply migrations\n\
+echo "Running migrations..."\n\
+npx payload migrate\n\
+\n\
+# Build Next.js if needed\n\
+if [ -f .next/skip-build ]; then\n\
+  echo "Running Next.js build that was skipped during Docker build..."\n\
+  # Use NEXT_SKIP_DB_CONNECT to avoid database access during build\n\
+  NEXT_SKIP_DB_CONNECT=true npx next build\n\
+fi\n\
+\n\
+# Start the application using the standalone server\n\
+echo "Starting Next.js application with standalone server..."\n\
+exec node .next/standalone/server.js' > /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 # Print directory contents to verify entrypoint.sh exists
 RUN ls -la /app/
-RUN chmod +x /app/entrypoint.sh
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
