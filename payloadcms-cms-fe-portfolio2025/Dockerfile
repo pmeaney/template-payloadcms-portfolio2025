@@ -100,18 +100,18 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Entrypoint script is copied at the end of the file
+# Create migration directory with correct permissions
+RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations
 
-RUN chown -R nextjs:nodejs /app
+# Copy entrypoint script directly to ensure it exists
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+RUN chown -R nextjs:nodejs /app /entrypoint.sh
 
 USER nextjs
 
 EXPOSE 3000
 ENV PORT 3000
-
-# Use ENTRYPOINT to ensure our script is the main entry point
-COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 # No ENTRYPOINT override, just use the script directly
 CMD ["/entrypoint.sh"]

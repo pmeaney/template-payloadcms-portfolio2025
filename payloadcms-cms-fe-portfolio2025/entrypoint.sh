@@ -39,9 +39,8 @@ fi
 
 echo "PostgreSQL is available!"
 
-# Ensure migrations directory exists
-echo "Ensuring migrations directory exists..."
-mkdir -p /app/src/migrations
+# Migrations directory should already exist with correct permissions
+echo "Using migrations directory at /app/src/migrations..."
 
 # Install pnpm if needed
 if ! command -v pnpm &> /dev/null; then
@@ -49,23 +48,23 @@ if ! command -v pnpm &> /dev/null; then
   npm install -g pnpm@10.3.0
 fi
 
-NODE_OPTIONS=--no-deprecation pnpm run payload migrate:status
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:status
 
 # Drops all entities from the database and re-runs all migrations from scratch.
 # and re-runs all migrations from scratch.
-NODE_OPTIONS=--no-deprecation pnpm run payload migrate:fresh
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:fresh
 
 # Run migration status check
 echo "Checking migration status..."
-NODE_OPTIONS=--no-deprecation pnpm run payload migrate:status
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:status
 
 # Create migration if needed
 echo "Creating migration if needed..."
-NODE_OPTIONS=--no-deprecation pnpm run payload migrate:create
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:create
 
 # Apply migrations
 echo "Running migrations..."
-NODE_OPTIONS=--no-deprecation pnpm run payload migrate
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate
 
 # Build Next.js if needed
 if [ -f .next/skip-build ]; then
