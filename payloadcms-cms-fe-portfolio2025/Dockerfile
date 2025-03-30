@@ -62,7 +62,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/ && \
+      cp -f entrypoint.sh /runtime-prep/entrypoint.sh && \
       cp -r .next /runtime-prep/; \
     else \
       echo "Creating build output directory" && \
@@ -74,7 +74,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/; \
+      cp -f entrypoint.sh /runtime-prep/entrypoint.sh; \
     fi
 
 # Production image, copy all the files and run next
@@ -100,9 +100,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy entrypoint script for database migrations and startup
-COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+# Entrypoint script is copied at the end of the file
 
 RUN chown -R nextjs:nodejs /app
 
@@ -111,5 +109,9 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Use the entrypoint script for database migrations and application startup
-CMD ["./entrypoint.sh"]
+# Use ENTRYPOINT to ensure our script is the main entry point
+COPY --from=builder --chown=nextjs:nodejs /app/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# No ENTRYPOINT override, just use the script directly
+CMD ["/entrypoint.sh"]
