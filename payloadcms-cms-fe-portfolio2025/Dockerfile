@@ -114,5 +114,43 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-# Use direct node execution of the Next.js standalone server
-CMD ["node", ".next/standalone/server.js"]
+# Write a debug script for troubleshooting
+RUN echo '#!/bin/sh\n\
+echo "====== Starting container with debugging ======"\n\
+echo "Environment: $NODE_ENV"\n\
+echo "Checking for key files:"\n\
+ls -la /app/\n\
+echo "\nChecking for .next directory:"\n\
+ls -la /app/.next/\n\
+\n\
+echo "\nChecking for .next/standalone directory:"\n\
+ls -la /app/.next/standalone/\n\
+\n\
+echo "\nChecking server.js file:"\n\
+if [ -f /app/.next/standalone/server.js ]; then\n\
+  echo "server.js exists"\n\
+  head -n 10 /app/.next/standalone/server.js\n\
+else\n\
+  echo "ERROR: server.js does not exist!"\n\
+fi\n\
+\n\
+echo "\n====== Starting application ======"\n\
+if [ -f /app/.next/standalone/server.js ]; then\n\
+  # Start with error catching to keep container alive\n\
+  node /app/.next/standalone/server.js || {\n\
+    echo "ERROR: Application crashed. Staying alive for debugging."\n\
+    echo "Check logs and fix the issue. Container will remain running."\n\
+    # Keep container alive for debugging\n\
+    tail -f /dev/null\n\
+  }\n\
+else\n\
+  echo "ERROR: Cannot start application, server.js is missing."\n\
+  echo "Container will remain running for debugging."\n\
+  # Keep container alive for debugging\n\
+  tail -f /dev/null\n\
+fi' > /app/docker-entrypoint.sh
+
+RUN chmod +x /app/docker-entrypoint.sh
+
+# Use the debug entrypoint script
+CMD ["/app/docker-entrypoint.sh"]
