@@ -89,6 +89,9 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
+# Install PostgreSQL client for pg_isready and other utilities
+RUN apk add --no-cache postgresql-client
+
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
@@ -109,26 +112,9 @@ USER nextjs
 EXPOSE 3000
 ENV PORT 3000
 
-CMD if [ -f .next/skip-build ]; then \
-      echo "Running Next.js build that was skipped during Docker build..." && \
-      NEXT_SKIP_DB_CONNECT=true npx next build && \
-      echo "Ensuring migrations directory exists..." && \
-      mkdir -p /app/src/migrations && \
-      echo "Running database migrations..." && \
-      npm run payload migrate:status && \
-      npm run payload migrate:create && \
-      echo "Running migrations..." && \
-      npx payload migrate && \
-      echo "Starting Next.js application..." && \
-      npx next start; \
-    else \
-      echo "Ensuring migrations directory exists..." && \
-      mkdir -p /app/src/migrations && \
-      echo "Running database migrations..." && \
-      npm run payload migrate:status && \
-      npm run payload migrate:create && \
-      echo "Running migrations..." && \
-      npx payload migrate && \
-      echo "Starting Next.js application..." && \
-      npx next start; \
-    fi
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Use entrypoint script
+CMD ["/app/entrypoint.sh"]
