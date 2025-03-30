@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# Check if required environment variables exist
+if [ -z "$DATABASE_URI" ]; then
+  echo "Error: DATABASE_URI environment variable is not set"
+  exit 1
+fi
+
+if [ -z "$PAYLOAD_SECRET" ]; then
+  echo "Error: PAYLOAD_SECRET environment variable is not set"
+  exit 1
+fi
+
 # Print environment variables for debugging (redact sensitive info)
 echo "==== DEBUGGING: Environment Variables ===="
 echo "DATABASE_URI: [REDACTED]"
