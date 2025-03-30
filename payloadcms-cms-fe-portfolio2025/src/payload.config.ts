@@ -63,6 +63,11 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
+    // Add migrations for production environment
+    migrationDir: path.resolve(dirname, 'migrations'),
+    prodMigrations: {
+      migrations: require('./migrations').migrations
+    },
   }),
   collections: [Pages, Posts, Media, Categories, Users],
   cors: [getServerSideURL()].filter(Boolean),
