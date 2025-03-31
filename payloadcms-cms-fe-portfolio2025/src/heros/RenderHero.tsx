@@ -12,6 +12,7 @@ const heroes = {
   mediumImpact: MediumImpactHero,
 }
 
+// Test
 export const RenderHero: React.FC<Page['hero']> = (props) => {
   const { type } = props || {}
 

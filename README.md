@@ -74,12 +74,12 @@ flowchart TB
                 DockerBuildStages --> BaseImage["Base Stage
                 - node:20-alpine
                 - Install pnpm@10.3.0"]
-                BaseImage --> DepsStage["Dependencies (deps) Stage
+                BaseImage --> DepsStage["Dependencies Stage
                 - Add libc6-compat
                 - Copy package.json & lock file
                 - pnpm install --frozen-lockfile"]
                 DepsStage --> BuilderStage["Builder Stage
-                - Copy dependencies from deps
+                - Copy dependencies from Dependencies Stage
                 - Copy all source files
                 - Copy ENV_FILE to .env
                 - Set SKIP_NEXTJS_BUILD flag"]
