@@ -33,6 +33,9 @@ ARG SKIP_NEXTJS_BUILD=false
 # Prepare for different build strategies
 RUN mkdir -p .next/standalone .next/static
 
+# Create runtime-prep directory
+RUN mkdir -p /runtime-prep
+
 # If skipping build, prepare files for runtime build
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Preparing for runtime build..." && \
@@ -46,7 +49,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp redirects.js .next/ && \
-      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
       cp entrypoint.sh /app/entrypoint.sh && \
       cp tailwind.config.mjs .next/; \
     else \
@@ -58,7 +61,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
 FROM builder AS prepare-runtime
 WORKDIR /app
 
-RUN mkdir -p /runtime-prep
+# /runtime-prep directory was already created in the builder stage
 
 # Copy base files that are needed regardless of build mode
 COPY --from=builder /tmp/env_vars /runtime-prep/.env
@@ -84,7 +87,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
       cp entrypoint.sh /app/entrypoint.sh && \
       cp -r .next /runtime-prep/; \
       echo "Preparing for runtime build..." && \
@@ -99,7 +102,7 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
       cp entrypoint.sh /app/entrypoint.sh && \
       cp redirects.js /runtime-prep/; \
       echo "Using built artifacts..." && \
@@ -122,10 +125,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Copy all prepared files from the preparation stage
 COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep/. .
-
-# Copy entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
 
 # Copy node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
