@@ -191,12 +191,14 @@ jobs:
             echo "$SSH_KEY" > ~/.ssh/id_ed25519
             chmod 600 ~/.ssh/id_ed25519
             
-            # Create SSH config with multiple echo commands instead of heredoc
-            echo "Host prod" > ~/.ssh/config
-            echo "  HostName $SERVER_IP" >> ~/.ssh/config
-            echo "  User $SSH_USER" >> ~/.ssh/config
-            echo "  IdentityFile ~/.ssh/id_ed25519" >> ~/.ssh/config
-            echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+            # Create SSH config using heredoc for consistency
+            cat >>~/.ssh/config <<END
+            Host prod
+              HostName $SERVER_IP
+              User $SSH_USER
+              IdentityFile ~/.ssh/id_ed25519
+              StrictHostKeyChecking no
+            END
                   
             # Verify connection to server with simple commands
             echo "Verifying server connection..."
