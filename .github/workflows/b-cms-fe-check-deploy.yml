@@ -156,7 +156,7 @@ jobs:
           docker build \
             --build-arg NODE_ENV=production \
             --build-arg ENV_FILE=env-defaults.env \
-             --build-arg SKIP_NEXTJS_BUILD=true \
+            --build-arg SKIP_NEXTJS_BUILD=true \
             -t ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest \
             ./payloadcms-cms-fe-portfolio2025
             
@@ -180,50 +180,49 @@ jobs:
           GHPAT: ${{ secrets.GHPAT__CICD_REPO_WORKFLOW_WRDPACKAGES }}
           PAYLOADCMS__PROD_ENV: ${{ secrets.PAYLOAD__SECRET_ENV_FILE }}
         run: |
-          if [[ "${{ steps.check-changes.outputs.changes }}" == "true" ]]; then
-            # Setup SSH - simplified approach
-            mkdir -p ~/.ssh/
-            echo "$SSH_KEY" > ~/.ssh/id_ed25519
-            chmod 600 ~/.ssh/id_ed25519
-            
-            # Create SSH config with multiple echo commands instead of heredoc
-            echo "Host prod" > ~/.ssh/config
-            echo "  HostName $SERVER_IP" >> ~/.ssh/config
-            echo "  User $SSH_USER" >> ~/.ssh/config
-            echo "  IdentityFile ~/.ssh/id_ed25519" >> ~/.ssh/config
-            echo "  StrictHostKeyChecking no" >> ~/.ssh/config
-                  
-            # Verify connection to server with simple commands
-            echo "Verifying server connection..."
-            ssh prod "hostname && which docker && uptime"
-            
-            # First authenticate with GHCR on the remote server
-            echo "Authenticating with GitHub Container Registry on remote server..."
-            ssh prod "echo '$GHPAT' | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
-            
-            # Create a temporary env file on the remote server
-            echo "Creating temporary environment file..."
-            ssh prod "echo '$PAYLOADCMS__PROD_ENV' > ~/payloadcms-prod-env.env"
-            
-            # Deploy to remote server with environment file
-            ssh prod "docker pull ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest && \
-                      docker rm -f payloadcms-cms-fe-portfolio-prod || true && \
-                      docker run -d \
-                        --name payloadcms-cms-fe-portfolio-prod \
-                        --network private-payloadcms-pg-dockernet \
-                        --network main-network--npm020325 \
-                        --memory=1500m \
-                        -e NODE_OPTIONS="--max-old-space-size=1024" \
-                        -p 3000:3000 \
-                        --env-file ~/payloadcms-prod-env.env \
-                        ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest"
-            
-            echo "Deleting temporarily created prod env file..."
-            ssh prod "rm ~/payloadcms-prod-env.env"
-            
-            echo "Deploying new frontend version..."
-            echo "action_taken=New version deployed" >> $GITHUB_OUTPUT
-            echo "deploy_status=success" >> $GITHUB_ENV
+          # Setup SSH
+          mkdir -p ~/.ssh/
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat >>~/.ssh/config <<END
+          Host prod
+            HostName $SERVER_IP
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking no
+          END
+                
+          # Verify connection to server with simple commands
+          echo "Verifying server connection..."
+          ssh prod "hostname && which docker && uptime"
+
+          # First authenticate with GHCR on the remote server
+          echo "Authenticating with GitHub Container Registry on remote server..."
+          ssh prod "echo '$GHPAT' | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+
+          # Create a temporary env file on the remote server
+          echo "Creating temporary environment file..."
+          ssh prod "echo '$PAYLOADCMS__PROD_ENV' > ~/payloadcms-prod-env.env"
+
+          # Deploy to remote server with environment file
+          ssh prod "docker pull ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest && \
+                    docker rm -f payloadcms-cms-fe-portfolio-prod || true && \
+                    docker run -d \
+                      --name payloadcms-cms-fe-portfolio-prod \
+                      --network private-payloadcms-pg-dockernet \
+                      --network main-network--npm020325 \
+                      --memory=1500m \
+                      -e NODE_OPTIONS="--max-old-space-size=1024" \
+                      -p 3000:3000 \
+                      --env-file ~/payloadcms-prod-env.env \
+                      ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest"
+
+          echo "Deleting temporarily created prod env file..."
+          ssh prod "rm ~/payloadcms-prod-env.env"
+
+          echo "Deploying new frontend version..."
+          echo "action_taken=New version deployed" >> $GITHUB_OUTPUT
+          echo "deploy_status=success" >> $GITHUB_ENV
           else
             echo "No changes detected, skipping deployment"
             echo "action_taken=No deployment needed" >> $GITHUB_OUTPUT
