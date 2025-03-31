@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Check if .env file exists
+if [ ! -f "/app/.env" ]; then
+  echo "Warning: .env file not found at /app/.env"
+fi
+
 # Check if required environment variables exist
 if [ -z "$DATABASE_URI" ]; then
   echo "Error: DATABASE_URI environment variable is not set"
@@ -42,17 +47,11 @@ echo "PostgreSQL is available!"
 # Migrations directory should already exist with correct permissions
 echo "Using migrations directory at /app/src/migrations..."
 
-# Install pnpm if needed
-if ! command -v pnpm &> /dev/null; then
-  echo "Installing pnpm..."
-  npm install -g pnpm@10.3.0
-fi
-
 NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:status
 
-# Drops all entities from the database and re-runs all migrations from scratch.
-# and re-runs all migrations from scratch.
-NODE_OPTIONS=--no-deprecation pnpm run payload:migrate:fresh
+# Apply pending migrations without dropping existing data
+# This is safer for production environments
+NODE_OPTIONS=--no-deprecation pnpm run payload:migrate
 
 # Run migration status check
 echo "Checking migration status..."

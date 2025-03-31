@@ -216,8 +216,9 @@ jobs:
                         --name payloadcms-cms-fe-portfolio-prod \
                         --network private-payloadcms-pg-dockernet \
                         --network main-network--npm020325 \
-                        --memory=1500m \
-                        -e NODE_OPTIONS="--max-old-space-size=1024" \
+                        # Trying without this:
+                        # --memory=1500m \
+                        # -e NODE_OPTIONS="--max-old-space-size=1024" \
                         -p 3000:3000 \
                         --env-file ~/payloadcms-prod-env.env \
                         ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest"

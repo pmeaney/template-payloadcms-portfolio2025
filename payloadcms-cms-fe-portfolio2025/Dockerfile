@@ -1,6 +1,9 @@
 # To use this Dockerfile, you have to set `output: 'standalone'` in your next.config.js file.
 FROM node:20-alpine AS base
 
+# Install pnpm only once in the base image
+RUN npm install -g pnpm@10.3.0
+
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
@@ -8,15 +11,11 @@ WORKDIR /app
 
 # Install dependencies using pnpm
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm@10.3.0 && \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-
-# Install pnpm in the builder stage
-RUN npm install -g pnpm@10.3.0
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -24,6 +23,8 @@ COPY . .
 # Copies the CICD provided env file to .env in the container
 ARG ENV_FILE
 COPY ${ENV_FILE} .env
+# Save environment variables for later stages
+RUN cat .env > /tmp/env_vars
 ENV $(cat .env | xargs)
 
 # Add support for skipping the Next.js build during CI
@@ -53,29 +54,37 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
 
 # Create a separate preparation stage for runtime files
 FROM builder AS prepare-runtime
+WORKDIR /app
+
+RUN mkdir -p /runtime-prep
+
+# Copy base files that are needed regardless of build mode
+COPY --from=builder /tmp/env_vars /runtime-prep/.env
+COPY --from=builder /app/entrypoint.sh /runtime-prep/entrypoint.sh
+COPY --from=builder /app/public /runtime-prep/public
+COPY --from=builder /app/package.json /runtime-prep/package.json
+COPY --from=builder /app/next.config.js /runtime-prep/
+COPY --from=builder /app/postcss.config.js /runtime-prep/
+COPY --from=builder /app/tailwind.config.mjs /runtime-prep/
+COPY --from=builder /app/tsconfig.json /runtime-prep/
+COPY --from=builder /app/redirects.js /runtime-prep/
+
+# Copy src directory, ensuring migrations folder exists
+RUN mkdir -p /runtime-prep/src/migrations
+COPY --from=builder /app/src/migrations /runtime-prep/src/migrations
+
+# Copy additional files based on build mode
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
-      echo "Creating runtime preparation directory" && \
-      mkdir -p /runtime-prep/src && \
-      cp -r ./src/* /runtime-prep/src/ && \
-      cp next.config.js /runtime-prep/ && \
-      cp postcss.config.js /runtime-prep/ && \
-      cp tailwind.config.mjs /runtime-prep/ && \
-      cp tsconfig.json /runtime-prep/ && \
-      cp redirects.js /runtime-prep/ && \
-      cp -f entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp -r .next /runtime-prep/; \
+      echo "Preparing for runtime build..." && \
+      cp -r /app/src/* /runtime-prep/src/ && \
+      cp -r /app/.next /runtime-prep/; \
     else \
-      echo "Creating build output directory" && \
-      mkdir -p /runtime-prep && \
-      cp -r .next /runtime-prep/ && \
-      cp -r public /runtime-prep/ && \
-      cp next.config.js /runtime-prep/ && \
-      cp postcss.config.js /runtime-prep/ && \
-      cp tailwind.config.mjs /runtime-prep/ && \
-      cp tsconfig.json /runtime-prep/ && \
-      cp redirects.js /runtime-prep/ && \
-      cp -f entrypoint.sh /runtime-prep/entrypoint.sh; \
+      echo "Using built artifacts..." && \
+      cp -r /app/.next /runtime-prep/; \
     fi
+
+# Ensure entrypoint script is executable
+RUN chmod +x /runtime-prep/entrypoint.sh
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -83,35 +92,28 @@ WORKDIR /app
 
 ENV NODE_ENV production
 
-# Install PostgreSQL client for database connection checks and pnpm
-RUN apk add --no-cache postgresql-client && \
-    npm install -g pnpm@10.3.0
+# Install PostgreSQL client for database connection checks
+RUN apk add --no-cache postgresql-client
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy prepared files from the preparation stage
-COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep .
+# Copy all prepared files from the preparation stage
+COPY --from=prepare-runtime --chown=nextjs:nodejs /runtime-prep/. .
 
-# Setup dependencies
+# Copy node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
-# Add public directory which is always needed
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-
-# Create migration directory with correct permissions
+# Ensure migration directory exists with correct permissions
 RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations
 
-# Copy entrypoint script directly to ensure it exists
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-RUN chown -R nextjs:nodejs /app /entrypoint.sh
+# Ensure entrypoint script is executable
+RUN chmod +x /app/entrypoint.sh && chown nextjs:nodejs /app/entrypoint.sh
 
 USER nextjs
 
 EXPOSE 3000
 ENV PORT 3000
 
-# No ENTRYPOINT override, just use the script directly
-CMD ["/entrypoint.sh"]
+# Use the entrypoint script from the /app directory
+CMD ["/app/entrypoint.sh"]
