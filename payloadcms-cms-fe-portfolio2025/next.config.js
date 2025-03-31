@@ -23,10 +23,7 @@ const nextConfig = {
   },
   reactStrictMode: true,
   redirects,
-  experimental: {
-    instrumentationHook: true,
-    serverComponentsExternalPackages: ['sharp'],
-  },
+  serverExternalPackages: ['sharp'],
 }
 
 export default withPayload(nextConfig, { devBundleServerPackages: false })

@@ -117,8 +117,10 @@ COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 RUN chown nextjs:nodejs /app/entrypoint.sh
 
-# Ensure migration directory exists with correct permissions
-RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations
+# Ensure migration directory and next-env.d.ts have correct permissions
+RUN mkdir -p /app/src/migrations && \
+    touch /app/next-env.d.ts && \
+    chown -R nextjs:nodejs /app/src/migrations /app/next-env.d.ts
 
 USER nextjs
 
