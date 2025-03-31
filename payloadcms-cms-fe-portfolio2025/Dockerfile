@@ -60,8 +60,7 @@ RUN mkdir -p /runtime-prep
 
 # Copy base files that are needed regardless of build mode
 COPY --from=builder /tmp/env_vars /runtime-prep/.env
-# Ensure entrypoint file is copied directly from the source, not from builder stage
-COPY entrypoint.sh /runtime-prep/entrypoint.sh
+COPY --from=builder /app/entrypoint.sh /runtime-prep/entrypoint.sh
 COPY --from=builder /app/public /runtime-prep/public
 COPY --from=builder /app/package.json /runtime-prep/package.json
 COPY --from=builder /app/next.config.js /runtime-prep/
@@ -84,8 +83,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp -r /app/.next /runtime-prep/; \
     fi
 
-# Ensure entrypoint script is executable and verify it exists
-RUN ls -la /runtime-prep/ && chmod +x /runtime-prep/entrypoint.sh
+# Ensure entrypoint script is executable
+RUN chmod +x /runtime-prep/entrypoint.sh
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -108,16 +107,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 # Ensure migration directory exists with correct permissions
 RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations
 
-# Debug and ensure entrypoint script exists and is executable
-RUN ls -la /app/ && \
-    if [ -f /app/entrypoint.sh ]; then \
-        echo "Entrypoint script found!" && \
-        chmod +x /app/entrypoint.sh && \
-        chown nextjs:nodejs /app/entrypoint.sh; \
-    else \
-        echo "ERROR: Entrypoint script NOT found!" && \
-        exit 1; \
-    fi
+# Ensure entrypoint script is executable
+RUN chmod +x /app/entrypoint.sh && chown nextjs:nodejs /app/entrypoint.sh
 
 USER nextjs
 
