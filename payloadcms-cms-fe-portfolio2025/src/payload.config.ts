@@ -1,5 +1,6 @@
 // storage-adapter-import-placeholder
 import { postgresAdapter } from '@payloadcms/db-postgres';
+import { migrations } from './migrations';
 
 import sharp from 'sharp'; // sharp-import
 import path from 'path';
@@ -65,9 +66,7 @@ export default buildConfig({
     },
     // Add migrations for production environment
     migrationDir: path.resolve(dirname, 'migrations'),
-    prodMigrations: {
-      migrations: require('./migrations').migrations
-    },
+    prodMigrations: migrations,
   }),
   collections: [Pages, Posts, Media, Categories, Users],
   cors: [getServerSideURL()].filter(Boolean),
