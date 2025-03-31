@@ -35,6 +35,8 @@ RUN mkdir -p .next/standalone .next/static
 
 # Create runtime-prep directory
 RUN mkdir -p /runtime-prep
+# Copy entrypoint.sh to a temp location to avoid same-file copy issues
+COPY entrypoint.sh /tmp/entrypoint.sh
 
 # If skipping build, prepare files for runtime build
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
@@ -49,8 +51,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp redirects.js .next/ && \
-      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp entrypoint.sh /app/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build with migrations \
@@ -87,8 +89,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp entrypoint.sh /app/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
       cp -r .next /runtime-prep/; \
       echo "Preparing for runtime build..." && \
       cp -r /app/src/* /runtime-prep/src/ && \
@@ -102,8 +104,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
-      cp entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp entrypoint.sh /app/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
+      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
       cp redirects.js /runtime-prep/; \
       echo "Using built artifacts..." && \
       cp -r /app/.next /runtime-prep/; \
@@ -133,8 +135,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy entrypoint script before changing user
+# Copy entrypoint script before changing user 
+# Using a separate COPY ensures we always have the latest version
 COPY entrypoint.sh /app/entrypoint.sh
+COPY entrypoint.sh /tmp/entrypoint.sh
 RUN ls -la 
 RUN chmod +x /app/entrypoint.sh
 RUN chown -R nextjs:nodejs /app
