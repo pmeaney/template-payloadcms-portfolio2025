@@ -114,4 +114,4 @@ EXPOSE 3000
 ENV PORT 3000
 
 # Use the entrypoint script to run the app
-CMD ["/app/entrypoint.sh"]
+CMD ["/bin/sh", "./app/entrypoint.sh"]
