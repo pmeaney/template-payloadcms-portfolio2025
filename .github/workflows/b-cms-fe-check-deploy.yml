@@ -225,9 +225,10 @@ jobs:
           echo "Deleting temporarily created prod env file..."
           ssh prod "rm ~/payloadcms-prod-env.env"
 
-          echo "Deploying new frontend version..."
-          echo "action_taken=New version deployed" >> $GITHUB_OUTPUT
-          echo "deploy_status=success" >> $GITHUB_ENV
+          if [ "${{ steps.check-changes.outputs.changes }}" == "true" ]; then
+            echo "Deploying new frontend version..."
+            echo "action_taken=New version deployed" >> $GITHUB_OUTPUT
+            echo "deploy_status=success" >> $GITHUB_ENV
           else
             echo "No changes detected, skipping deployment"
             echo "action_taken=No deployment needed" >> $GITHUB_OUTPUT
