@@ -16,9 +16,7 @@ export async function middleware() {
           connectionString: process.env.DATABASE_URI || '',
         },
         migrationDir: './src/migrations',
-        prodMigrations: {
-          migrations
-        },
+        prodMigrations: migrations,
       });
       
       // Migrations will run automatically through the prodMigrations config
