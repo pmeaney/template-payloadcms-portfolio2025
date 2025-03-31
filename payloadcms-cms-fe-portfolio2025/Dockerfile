@@ -49,6 +49,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp redirects.js .next/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build normally \
@@ -70,6 +72,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
       cp redirects.js /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
       cp -r .next /runtime-prep/; \
     else \
       echo "Creating build output directory" && \
@@ -80,6 +84,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp postcss.config.js /runtime-prep/ && \
       cp tailwind.config.mjs /runtime-prep/ && \
       cp tsconfig.json /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
       cp redirects.js /runtime-prep/; \
     fi
 
@@ -106,7 +112,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Copy entrypoint script before changing user
-COPY ./entrypoint.sh /app/entrypoint.sh
+COPY entrypoint.sh /app/entrypoint.sh
 RUN ls -la 
 RUN chmod +x /app/entrypoint.sh
 RUN chown -R nextjs:nodejs /app
