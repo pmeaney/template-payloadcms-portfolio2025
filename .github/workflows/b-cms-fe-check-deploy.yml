@@ -157,14 +157,17 @@ jobs:
         run: |
           echo "Building and publishing frontend Docker image..."
 
-          # Build the PayloadCMS Docker image with env file
+          # Create logs directory
+          mkdir -p ./build-logs
+
+          # Build the PayloadCMS Docker image with env file and capture detailed logs
           docker build \
             --build-arg NODE_ENV=production \
             --build-arg ENV_FILE=env-defaults.env \
             --build-arg SKIP_NEXTJS_BUILD=true \
             --no-cache \
             -t ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest \
-            ./payloadcms-cms-fe-portfolio2025
+            ./payloadcms-cms-fe-portfolio2025 | tee ./build-logs/docker-build.log
             
           # Push the Docker image to GitHub Container Registry
           docker push ghcr.io/pmeaney/template-payloadcms-portfolio2025:latest
@@ -175,6 +178,14 @@ jobs:
           echo "BUILT=true" >> $GITHUB_ENV
           echo "PUSHED=true" >> $GITHUB_ENV
           echo "build_status=success" >> $GITHUB_OUTPUT
+          
+      - name: Upload Docker build logs
+        if: steps.check-changes.outputs.changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-build-logs
+          path: ./build-logs/docker-build.log
+          retention-days: 7
 
       - name: SSH in and Deploy Updated CMS-Frontend image with Prod Secrets
         id: step-deploy--cms-fe
