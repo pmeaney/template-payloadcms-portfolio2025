@@ -35,7 +35,7 @@ RUN mkdir -p .next/standalone .next/static
 
 # Create runtime-prep directory
 RUN mkdir -p /runtime-prep
-# Copy entrypoint.sh to a temp location to avoid same-file copy issues
+# Copy entrypoint.sh to a temp location
 COPY entrypoint.sh /tmp/entrypoint.sh
 
 # If skipping build, prepare files for runtime build
@@ -51,8 +51,6 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp redirects.js .next/ && \
-      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build with migrations \
@@ -63,8 +61,6 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
 FROM builder AS prepare-runtime
 WORKDIR /app
 
-# /runtime-prep directory was already created in the builder stage
-
 # Copy base files that are needed regardless of build mode
 COPY --from=builder /tmp/env_vars /runtime-prep/.env
 COPY --from=builder /app/public /runtime-prep/public
@@ -74,6 +70,7 @@ COPY --from=builder /app/postcss.config.js /runtime-prep/
 COPY --from=builder /app/tailwind.config.mjs /runtime-prep/
 COPY --from=builder /app/tsconfig.json /runtime-prep/
 COPY --from=builder /app/redirects.js /runtime-prep/
+COPY --from=builder /tmp/entrypoint.sh /runtime-prep/entrypoint.sh
 
 # Copy src directory, ensuring migrations folder exists
 RUN mkdir -p /runtime-prep/src/migrations
@@ -84,34 +81,13 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       echo "Creating runtime preparation directory" && \
       mkdir -p /runtime-prep/src && \
       cp -r ./src/* /runtime-prep/src/ && \
-      cp next.config.js /runtime-prep/ && \
-      cp postcss.config.js /runtime-prep/ && \
-      cp tailwind.config.mjs /runtime-prep/ && \
-      cp tsconfig.json /runtime-prep/ && \
-      cp redirects.js /runtime-prep/ && \
-      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
       cp -r .next /runtime-prep/; \
-      echo "Preparing for runtime build..." && \
-      cp -r /app/src/* /runtime-prep/src/ && \
-      cp -r /app/.next /runtime-prep/; \
+      echo "Preparing for runtime build..."; \
     else \
       echo "Creating build output directory" && \
-      mkdir -p /runtime-prep && \
       cp -r .next /runtime-prep/ && \
-      cp -r public /runtime-prep/ && \
-      cp next.config.js /runtime-prep/ && \
-      cp postcss.config.js /runtime-prep/ && \
-      cp tailwind.config.mjs /runtime-prep/ && \
-      cp tsconfig.json /runtime-prep/ && \
-      cp /tmp/entrypoint.sh /runtime-prep/entrypoint.sh && \
-      cp /tmp/entrypoint.sh /app/entrypoint.sh && \
-      cp redirects.js /runtime-prep/; \
-      echo "Using built artifacts..." && \
-      cp -r /app/.next /runtime-prep/; \
+      echo "Using built artifacts..."; \
     fi
-
-
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -135,16 +111,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 # Add public directory which is always needed
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy entrypoint script before changing user 
-# Using a separate COPY ensures we always have the latest version
+# Add entrypoint script directly to ensure we have the latest version
+# This is a critical component, so we include it directly in the final stage
 COPY entrypoint.sh /app/entrypoint.sh
-COPY entrypoint.sh /tmp/entrypoint.sh
-RUN ls -la 
 RUN chmod +x /app/entrypoint.sh
-RUN chown -R nextjs:nodejs /app
+RUN chown nextjs:nodejs /app/entrypoint.sh
 
 # Ensure migration directory exists with correct permissions
-RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations /app/entrypoint.sh
+RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations
 
 USER nextjs
 
