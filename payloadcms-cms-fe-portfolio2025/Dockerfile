@@ -46,6 +46,8 @@ RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
       cp tsconfig.json .next/ && \
       cp postcss.config.js .next/ && \
       cp redirects.js .next/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
       cp tailwind.config.mjs .next/; \
     else \
       # Run the build with migrations \
@@ -74,13 +76,36 @@ COPY --from=builder /app/src/migrations /runtime-prep/src/migrations
 
 # Copy additional files based on build mode
 RUN if [ "$SKIP_NEXTJS_BUILD" = "true" ]; then \
+      echo "Creating runtime preparation directory" && \
+      mkdir -p /runtime-prep/src && \
+      cp -r ./src/* /runtime-prep/src/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/ && \
+      cp redirects.js /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
+      cp -r .next /runtime-prep/; \
       echo "Preparing for runtime build..." && \
       cp -r /app/src/* /runtime-prep/src/ && \
       cp -r /app/.next /runtime-prep/; \
     else \
+      echo "Creating build output directory" && \
+      mkdir -p /runtime-prep && \
+      cp -r .next /runtime-prep/ && \
+      cp -r public /runtime-prep/ && \
+      cp next.config.js /runtime-prep/ && \
+      cp postcss.config.js /runtime-prep/ && \
+      cp tailwind.config.mjs /runtime-prep/ && \
+      cp tsconfig.json /runtime-prep/ && \
+      cp entrypoint.sh /runtime-prep/ && \
+      cp entrypoint.sh /app/entrypoint.sh && \
+      cp redirects.js /runtime-prep/; \
       echo "Using built artifacts..." && \
       cp -r /app/.next /runtime-prep/; \
     fi
+
 
 
 # Production image, copy all the files and run next
@@ -104,6 +129,16 @@ RUN chmod +x /app/entrypoint.sh
 
 # Copy node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+
+# Add public directory which is always needed
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# Copy entrypoint script before changing user
+COPY entrypoint.sh /app/entrypoint.sh
+RUN ls -la 
+RUN chmod +x /app/entrypoint.sh
+RUN chown -R nextjs:nodejs /app
 
 # Ensure migration directory exists with correct permissions
 RUN mkdir -p /app/src/migrations && chown -R nextjs:nodejs /app/src/migrations /app/entrypoint.sh
