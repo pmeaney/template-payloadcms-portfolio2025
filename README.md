@@ -1,7 +1,13 @@
 [![Build Status](https://github.com/pmeaney/template-payloadcms-portfolio2025/actions/workflows/z-main.yml/badge.svg)](https://github.com/pmeaney/template-payloadcms-portfolio2025/actions/workflows/z-main.yml)
 
 
-# Dockerized PayloadCMS + Postgres Portfolio Project Template
+# Moved to
+
+This project has moved to [tmp-payloadcms-portfolio](https://github.com/pmeaney/tmp-payloadcms-portfolio).
+
+I decided to start with a fresh template of [PayloadCMS's Website Template](https://github.com/payloadcms/payload/tree/main/templates/website), once I figured out a basic deployment process.  This is because I worked with ClaudeAI a bit on the project, and wasn't sure if Claude (or myself) introduced various bugs/noise while experimenting with the deployment process.
+
+## Dockerized PayloadCMS + Postgres Portfolio Project Template
 
 A template for local development of a PayloadCMS website.
 
